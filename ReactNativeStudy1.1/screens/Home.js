@@ -1,3 +1,4 @@
+// screens/Home.js
 import React from 'react';
 import { StatusBar } from 'react-native';
 import styled from 'styled-components/native';
@@ -33,7 +34,7 @@ export default function HomeScreen({ navigation }) {
 // Styled Components
 const Container = styled.View`
   flex: 1;
-  background-color: #F5EFE6; /* soft beige */
+  background-color: #F5EFE6;
   align-items: center;
   justify-content: center;
   padding: 40px;
@@ -45,7 +46,7 @@ const HeaderContainer = styled.View`
 `;
 
 const AppIcon = styled.View`
-  background-color: #B03060; /* rich maroon */
+  background-color: #B03060;
   padding: 20px;
   border-radius: 60px;
   margin-bottom: 20px;
@@ -63,7 +64,7 @@ const HeaderText = styled.Text`
 `;
 
 const SubHeaderText = styled.Text`
-  color: #6B5E58; /* soft taupe */
+  color: #6B5E58;
   font-size: 16px;
   margin-top: 6px;
   text-align: center;
@@ -75,7 +76,7 @@ const ButtonContainer = styled.View`
 `;
 
 const PrimaryButton = styled.TouchableOpacity`
-  background-color: #B03060; /* maroon */
+  background-color: #B03060;
   padding: 16px;
   border-radius: 14px;
   width: 80%;

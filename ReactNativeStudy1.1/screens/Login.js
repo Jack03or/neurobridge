@@ -1,7 +1,9 @@
+// screens/Login.js
 import React, { useState } from 'react';
 import styled from 'styled-components/native';
 import { StatusBar, Alert } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { BASE_URL } from '../config';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
@@ -14,22 +16,43 @@ export default function LoginScreen({ navigation }) {
     }
 
     try {
-      const response = await fetch('http://192.168.1.87:8080/api/users/login', {
+      const response = await fetch(`${BASE_URL}/api/users/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
 
       const text = await response.text();
+      console.log('Login raw response:', text);
 
       if (response.ok) {
-        if (text.includes('Login successful')) {
+        // should be JSON user from backend
+        let user;
+        try {
+          user = JSON.parse(text);
+        } catch (e) {
+          console.error('Could not parse user JSON:', e);
+          Alert.alert('Error', 'Unexpected server response.');
+          return;
+        }
+
+        if (user && user.id) {
           Alert.alert('Success', 'Login successful!');
+          //navigate to Dashboard, passing userId
+          navigation.navigate('Dashboard', { userId: user.id });
         } else {
-          Alert.alert('Error', 'Invalid email or password');
+          Alert.alert('Error', 'User data missing from server response.');
         }
       } else {
-        Alert.alert('Error', 'Server error. Please try again later.');
+        // not ok, try to extract error message
+        let message = 'Login failed';
+        try {
+          const err = JSON.parse(text);
+          if (err.message) message = err.message;
+        } catch {
+          if (text) message = text;
+        }
+        Alert.alert('Error', message);
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -41,7 +64,6 @@ export default function LoginScreen({ navigation }) {
     <Container>
       <StatusBar barStyle="dark-content" />
 
-      {/* Background Circles */}
       <TopCircle />
       <BottomCircle />
 
@@ -80,7 +102,7 @@ export default function LoginScreen({ navigation }) {
   );
 }
 
-// Styled Components (copied and adjusted from SignUp.js)
+// Styled components
 const Container = styled.View`
   flex: 1;
   background-color: #F5EFE6;

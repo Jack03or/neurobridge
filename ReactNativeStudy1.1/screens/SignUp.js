@@ -1,9 +1,11 @@
+// screens/SignUp.js
 import React, { useState } from 'react';
 import styled from 'styled-components/native';
 import { StatusBar, Alert } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { BASE_URL } from '../config';
 
-export default function SignUpScreen({ navigation }) {
+export default function SignUp({ navigation }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -15,23 +17,24 @@ export default function SignUpScreen({ navigation }) {
     }
 
     try {
-      const response = await fetch('http://192.168.1.87:8080/api/users/register', {
+      const response = await fetch(`${BASE_URL}/api/users/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, email, password }),
       });
 
-      const result = await response.text();
-      console.log('Response:', result);
+      const result = await response.json(); // backend returns JSON User
+      console.log('Sign-up response JSON:', result);
 
-      if (response.ok) {
+      if (response.ok && result && result.id) {
         Alert.alert('Success', 'User registered successfully!');
-        navigation.navigate('Login');
+        // Pass userId to AddChild so we can link the child to this parent
+        navigation.navigate('AddChild', { userId: result.id });
       } else {
-        Alert.alert('Error', result);
+        Alert.alert('Error', 'Registration failed.');
       }
     } catch (error) {
-      console.error(error);
+      console.error('Sign-up error:', error);
       Alert.alert('Network Error', 'Could not connect to the server.');
     }
   };
@@ -45,9 +48,27 @@ export default function SignUpScreen({ navigation }) {
       <Card>
         <Title>Create Account</Title>
 
-        <Input placeholder="Name" value={name} onChangeText={setName} placeholderTextColor="#fff9" />
-        <Input placeholder="Your Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholderTextColor="#fff9" />
-        <Input placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry placeholderTextColor="#fff9" />
+        <Input
+          placeholder="Name"
+          value={name}
+          onChangeText={setName}
+          placeholderTextColor="#fff9"
+        />
+        <Input
+          placeholder="Your Email"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          placeholderTextColor="#fff9"
+        />
+        <Input
+          placeholder="Password"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          placeholderTextColor="#fff9"
+        />
 
         <SignUpButton activeOpacity={0.8} onPress={handleSignUp}>
           <ButtonText>Sign Up</ButtonText>
@@ -66,7 +87,7 @@ export default function SignUpScreen({ navigation }) {
 // Styled Components
 const Container = styled.View`
   flex: 1;
-  background-color: #F5EFE6; /* beige */
+  background-color: #f5efe6;
   justify-content: center;
   align-items: center;
   position: relative;
@@ -78,7 +99,7 @@ const TopCircle = styled.View`
   width: 360px;
   height: 360px;
   border-radius: 180px;
-  background-color: #B03060; /* maroon */
+  background-color: #b03060;
   top: -140px;
   right: -120px;
   opacity: 0.95;
@@ -89,7 +110,7 @@ const BottomCircle = styled.View`
   width: 320px;
   height: 320px;
   border-radius: 160px;
-  background-color: #B03060; /* maroon */
+  background-color: #b03060;
   bottom: -170px;
   left: -140px;
   opacity: 0.9;
@@ -104,23 +125,23 @@ const Card = styled.View`
 const Title = styled.Text`
   font-size: 32px;
   font-weight: 700;
-  color: #2F2F2F;
+  color: #2f2f2f;
   margin-bottom: 28px;
   align-self: flex-start;
 `;
 
 const Input = styled.TextInput`
   width: 100%;
-  background-color: #B03060;  /* maroon pill inputs */
+  background-color: #b03060;
   border-radius: 12px;
   padding: 14px 16px;
   margin-bottom: 16px;
-  color: #FFF;
+  color: #fff;
   font-size: 16px;
 `;
 
 const SignUpButton = styled.TouchableOpacity`
-  background-color: #2F2F2F; /* dark slate */
+  background-color: #2f2f2f;
   padding: 16px;
   border-radius: 50px;
   width: 60%;
@@ -132,7 +153,7 @@ const SignUpButton = styled.TouchableOpacity`
 `;
 
 const ButtonText = styled.Text`
-  color: #FFF;
+  color: #fff;
   font-size: 18px;
   font-weight: 600;
   margin-right: 8px;
@@ -144,10 +165,10 @@ const LoginRow = styled.View`
 `;
 
 const LoginText = styled.Text`
-  color: #6B5E58; /* taupe */
+  color: #6b5e58;
 `;
 
 const LoginLink = styled.Text`
-  color: #B03060;
+  color: #b03060;
   font-weight: 700;
 `;
