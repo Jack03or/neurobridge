@@ -1,0 +1,37 @@
+# ===== OS / Editor =====
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ===== Java / Spring =====
+demo/target/
+demo/.mvn/wrapper/maven-wrapper.jar
+*.class
+*.log
+
+# ===== Python =====
+NeuroBridge-ML/.venv/
+NeuroBridge-ML/__pycache__/
+NeuroBridge-ML/*.pyc
+NeuroBridge-ML/model.joblib
+NeuroBridge-ML/metrics.json
+
+# If you later add a python .env
+NeuroBridge-ML/.env
+
+# ===== React Native / Node =====
+ReactNativeStudy1.1/node_modules/
+ReactNativeStudy1.1/.expo/
+ReactNativeStudy1.1/.expo-shared/
+ReactNativeStudy1.1/npm-debug.log*
+ReactNativeStudy1.1/yarn-debug.log*
+ReactNativeStudy1.1/yarn-error.log*
+ReactNativeStudy1.1/android/.gradle/
+ReactNativeStudy1.1/android/app/build/
+ReactNativeStudy1.1/ios/Pods/
+
+# ===== Secrets (general) =====
+.env
+*.keystore
+*.jks
