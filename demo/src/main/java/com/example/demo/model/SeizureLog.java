@@ -20,89 +20,97 @@ public class SeizureLog {
     @Column(nullable = false)
     private LocalDateTime timestamp;
 
-    // simple label for the type (eye roll, blank stare, etc.)
-    @Column(name = "seizure_type", length = 100)
+    /**
+     * Selected symptoms as CSV
+     * Example: "Twitch, Jerk, Eye roll, Convulsions, Muscle spasm"
+     */
+    @Column(name = "seizure_type", length = 255)
     private String type;
 
-    // how long the seizure lasted (in seconds) – optional
+    // awareness choice
+    @Column(name = "awareness", length = 50)
+    private String awareness;
+
+    // duration in seconds
     @Column(name = "duration_seconds")
     private Integer durationSeconds;
 
-    // possible trigger written by the parent (e.g. lack of sleep, flashing lights)
-    @Column(length = 255)
-    private String trigger;
+    // AWAKE / TIRED / ASLEEP
+    @Column(name = "patient_state", length = 30)
+    private String patientState;
 
-    // what happened afterwards (e.g. tired, confused)
+    // meds taken around seizure time
+    @Column(name = "meds_taken")
+    private Boolean medsTaken;
+
+    @Column(name = "intervention_needed")
+    private Boolean interventionNeeded;
+
+    @Column(name = "tongue_bite")
+    private Boolean tongueBite;
+
+    // ACTIVE / RESTING
+    @Column(name = "activity_state", length = 30)
+    private String activityState;
+
+    @Column(name = "incontinence")
+    private Boolean incontinence;
+
+    // renamed from "trigger" (MySQL reserved word)
+    @Column(name = "seizure_trigger", length = 255)
+    private String seizureTrigger;
+
     @Column(name = "post_effects", length = 255)
     private String postEffects;
 
-    // free text notes if they want to add more detail
-    @Column(length = 500)
+    // free text notes
+    @Column(length = 1000)
     private String notes;
 
     // ----- getters and setters -----
 
-    public Long getId() {
-        return id;
-    }
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
 
-    public void setId(Long id) {
-        this.id = id;
-    }
+    public Child getChild() { return child; }
+    public void setChild(Child child) { this.child = child; }
 
-    public Child getChild() {
-        return child;
-    }
+    public LocalDateTime getTimestamp() { return timestamp; }
+    public void setTimestamp(LocalDateTime timestamp) { this.timestamp = timestamp; }
 
-    public void setChild(Child child) {
-        this.child = child;
-    }
+    public String getType() { return type; }
+    public void setType(String type) { this.type = type; }
 
-    public LocalDateTime getTimestamp() {
-        return timestamp;
-    }
+    public String getAwareness() { return awareness; }
+    public void setAwareness(String awareness) { this.awareness = awareness; }
 
-    public void setTimestamp(LocalDateTime timestamp) {
-        this.timestamp = timestamp;
-    }
+    public Integer getDurationSeconds() { return durationSeconds; }
+    public void setDurationSeconds(Integer durationSeconds) { this.durationSeconds = durationSeconds; }
 
-    public String getType() {
-        return type;
-    }
+    public String getPatientState() { return patientState; }
+    public void setPatientState(String patientState) { this.patientState = patientState; }
 
-    public void setType(String type) {
-        this.type = type;
-    }
+    public Boolean getMedsTaken() { return medsTaken; }
+    public void setMedsTaken(Boolean medsTaken) { this.medsTaken = medsTaken; }
 
-    public Integer getDurationSeconds() {
-        return durationSeconds;
-    }
+    public Boolean getInterventionNeeded() { return interventionNeeded; }
+    public void setInterventionNeeded(Boolean interventionNeeded) { this.interventionNeeded = interventionNeeded; }
 
-    public void setDurationSeconds(Integer durationSeconds) {
-        this.durationSeconds = durationSeconds;
-    }
+    public Boolean getTongueBite() { return tongueBite; }
+    public void setTongueBite(Boolean tongueBite) { this.tongueBite = tongueBite; }
 
-    public String getTrigger() {
-        return trigger;
-    }
+    public String getActivityState() { return activityState; }
+    public void setActivityState(String activityState) { this.activityState = activityState; }
 
-    public void setTrigger(String trigger) {
-        this.trigger = trigger;
-    }
+    public Boolean getIncontinence() { return incontinence; }
+    public void setIncontinence(Boolean incontinence) { this.incontinence = incontinence; }
 
-    public String getPostEffects() {
-        return postEffects;
-    }
+    public String getSeizureTrigger() { return seizureTrigger; }
+    public void setSeizureTrigger(String seizureTrigger) { this.seizureTrigger = seizureTrigger; }
 
-    public void setPostEffects(String postEffects) {
-        this.postEffects = postEffects;
-    }
+    public String getPostEffects() { return postEffects; }
+    public void setPostEffects(String postEffects) { this.postEffects = postEffects; }
 
-    public String getNotes() {
-        return notes;
-    }
-
-    public void setNotes(String notes) {
-        this.notes = notes;
-    }
+    public String getNotes() { return notes; }
+    public void setNotes(String notes) { this.notes = notes; }
 }

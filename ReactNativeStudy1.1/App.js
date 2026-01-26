@@ -9,6 +9,11 @@ import LoginScreen from './screens/Login';
 import AddChild from './screens/AddChild';
 import Dashboard from './screens/Dashboard';
 
+// NEW
+import LogSeizureSymptoms from './screens/LogSeizureSymptoms';
+import LogSeizureDetails from './screens/LogSeizureDetails';
+import SeizureSummary from './screens/SeizureSummary';
+
 const Stack = createNativeStackNavigator();
 
 export default function App() {
@@ -23,6 +28,11 @@ export default function App() {
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="AddChild" component={AddChild} />
         <Stack.Screen name="Dashboard" component={Dashboard} />
+
+        {/* NEW FLOW */}
+        <Stack.Screen name="LogSeizureSymptoms" component={LogSeizureSymptoms} />
+        <Stack.Screen name="LogSeizureDetails" component={LogSeizureDetails} />
+        <Stack.Screen name="SeizureSummary" component={SeizureSummary} />
       </Stack.Navigator>
     </NavigationContainer>
   );

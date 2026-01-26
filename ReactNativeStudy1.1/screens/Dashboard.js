@@ -6,11 +6,10 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { BASE_URL } from '../config';
 
 export default function Dashboard({ route, navigation }) {
-  const { userId } = route.params; // this still comes from login / add child
+  const { userId } = route.params;
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // grab everything for the dashboard in one go from the backend
   useEffect(() => {
     const fetchDashboard = async () => {
       try {
@@ -18,7 +17,6 @@ export default function Dashboard({ route, navigation }) {
           `${BASE_URL}/api/dashboard/by-user/${userId}`,
         );
         const text = await response.text();
-        console.log('Dashboard raw response:', text);
 
         if (!response.ok) {
           Alert.alert('Error', text || 'Could not load dashboard data.');
@@ -29,14 +27,12 @@ export default function Dashboard({ route, navigation }) {
         try {
           data = JSON.parse(text);
         } catch (e) {
-          console.warn('Could not parse dashboard JSON:', e);
           Alert.alert('Error', 'Unexpected server response.');
           return;
         }
 
         setDashboard(data);
       } catch (err) {
-        console.error(err);
         Alert.alert('Error', 'Could not load dashboard information.');
       } finally {
         setLoading(false);
@@ -46,13 +42,12 @@ export default function Dashboard({ route, navigation }) {
     fetchDashboard();
   }, [userId]);
 
-  // little helper to turn dob into age in years (backend sends yyyy-MM-dd here)
   const calculateAgeFromDob = (dobString) => {
     if (!dobString) return '-';
 
     const [yearStr, monthStr, dayStr] = dobString.split('-');
     const year = parseInt(yearStr, 10);
-    const month = parseInt(monthStr, 10) - 1; // JS months are 0–11
+    const month = parseInt(monthStr, 10) - 1;
     const day = parseInt(dayStr, 10);
 
     const dob = new Date(year, month, day);
@@ -69,7 +64,6 @@ export default function Dashboard({ route, navigation }) {
   const hasChild = dashboard?.hasChild;
   const age = dashboard?.dob ? calculateAgeFromDob(dashboard.dob) : '-';
 
-  // what to show in the big ring
   const riskPercent = dashboard?.riskPercent;
   const riskDisplay =
     riskPercent == null ? '--%' : `${riskPercent.toString()}%`;
@@ -78,15 +72,13 @@ export default function Dashboard({ route, navigation }) {
     <Container>
       <StatusBar barStyle="light-content" />
 
-      {/* little floating bar at the top so the screen feels “full” */}
       <TopBar>
+        {/* put onPress back for settings */}
         <SettingsButton onPress={() => navigation.navigate('Settings')}>
           <TopIcon name="cog-outline" />
         </SettingsButton>
 
         <TopTitle>Neurobridge</TopTitle>
-
-        {/* this spacer keeps the title sitting nicely in the middle */}
         <TopSpacer />
       </TopBar>
 
@@ -124,13 +116,10 @@ export default function Dashboard({ route, navigation }) {
                 ) : null}
               </ChildSubRow>
 
-              {/* quick snapshot row: last seizure + medication */}
               <SummaryRow>
                 <SummaryItem>
                   <SummaryLabel>Last seizure</SummaryLabel>
-                  <SummaryValue>
-                    {dashboard.lastSeizureText || '--'}
-                  </SummaryValue>
+                  <SummaryValue>{dashboard.lastSeizureText || '--'}</SummaryValue>
                 </SummaryItem>
 
                 <SummaryItem>
@@ -156,12 +145,10 @@ export default function Dashboard({ route, navigation }) {
               <DeviceRow>
                 <DeviceDot />
                 <DeviceText>
-                  Fitbit status:{' '}
-                  {dashboard.fitbitStatusText || 'Not connected'}
+                  Fitbit status: {dashboard.fitbitStatusText || 'Not connected'}
                 </DeviceText>
               </DeviceRow>
 
-              {/* keeping the risk ring as a “haven’t done yet” area but wired up */}
               <StatusRing>
                 <StatusInner>
                   <StatusLabel>Today</StatusLabel>
@@ -170,6 +157,7 @@ export default function Dashboard({ route, navigation }) {
                 </StatusInner>
               </StatusRing>
 
+              {/* Metric cards */}
               <MetricsRow>
                 <MetricChip>
                   <MetricLabel>Sleep</MetricLabel>
@@ -209,7 +197,7 @@ export default function Dashboard({ route, navigation }) {
 
         <ActionsContainer>
           <ActionTile
-            onPress={() => Alert.alert('Log Seizure', 'Coming next!')}
+            onPress={() => navigation.navigate('LogSeizureSymptoms', { userId })}
           >
             <ActionIcon name="pulse" />
             <ActionText>Log Seizure</ActionText>
@@ -246,7 +234,6 @@ const Container = styled.View`
   background-color: #f5efe6;
 `;
 
-/* this is the new top bar using your maroon colour */
 const TopBar = styled.View`
   height: 56px;
   background-color: #b03060;
@@ -329,7 +316,6 @@ const ChildInfoText = styled.Text`
   max-width: 60%;
 `;
 
-/* new summary row under the child header */
 const SummaryRow = styled.View`
   margin-top: 14px;
   flex-direction: row;
@@ -369,7 +355,6 @@ const MedicationText = styled.Text`
   color: #2f2f2f;
 `;
 
-/* tiny line for device status */
 const DeviceRow = styled.View`
   margin-top: 8px;
   flex-direction: row;
