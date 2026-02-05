@@ -66,6 +66,7 @@ export default function LogSeizureSymptoms({ route, navigation }) {
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 30 }}>
         <Title>Select what happened</Title>
         <SubTitle>Choose symptoms, then continue.</SubTitle>
+        <SubTitle>Awareness must be selected.</SubTitle>
 
         <Grid>
           {tiles.map((t) => {

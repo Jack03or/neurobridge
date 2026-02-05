@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
-import { ScrollView, Switch } from 'react-native';
+import { ScrollView, Switch, Platform } from 'react-native';
 import styled from 'styled-components/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 export default function LogSeizureDetails({ route, navigation }) {
   const { userId, symptoms, symptomsNone, awareness } = route.params;
 
-  // timestamp defaults to now; we’ll send ISO to backend
-  const [timestampIso, setTimestampIso] = useState(new Date().toISOString());
+  // timestamp picker ios
+  const [timestampDate, setTimestampDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
 
   const [mins, setMins] = useState('0');
   const [secs, setSecs] = useState('0');
@@ -21,7 +24,20 @@ export default function LogSeizureDetails({ route, navigation }) {
 
   const [notes, setNotes] = useState('');
 
-  const durationSeconds = Math.max(0, parseInt(mins || '0', 10) * 60 + parseInt(secs || '0', 10));
+  const durationSeconds = Math.max(
+    0,
+    parseInt(mins || '0', 10) * 60 + parseInt(secs || '0', 10),
+  );
+
+  // Mathcing Spring Boot LocalDateTime Format
+  const timestampIso = timestampDate.toISOString().slice(0, 19); // "YYYY-MM-DDTHH:mm:ss"
+
+  // format helpers (keep it simple + consistent)
+  const formatDate = (d) =>
+    d.toLocaleDateString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit' });
+
+  const formatTime = (d) =>
+    d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 
   return (
     <Container>
@@ -35,15 +51,82 @@ export default function LogSeizureDetails({ route, navigation }) {
 
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 30 }}>
         <Card>
-          <CardTitle>Timestamp</CardTitle>
-          <SmallText>
-            For now we log “now”. Later we can swap this for an iOS date/time picker like your DOB.
-          </SmallText>
-          <Input value={timestampIso} onChangeText={setTimestampIso} />
+          <CardTitle>Date & Time</CardTitle>
+          <SmallText>When did the seizure occur?</SmallText>
+
+          <Row>
+            <Half>
+              <Label>Date</Label>
+              <TouchableBox onPress={() => setShowDatePicker(true)}>
+                <BoxText>{formatDate(timestampDate)}</BoxText>
+              </TouchableBox>
+            </Half>
+
+            <Half>
+              <Label>Time</Label>
+              <TouchableBox onPress={() => setShowTimePicker(true)}>
+                <BoxText>{formatTime(timestampDate)}</BoxText>
+              </TouchableBox>
+            </Half>
+          </Row>
+
+          {showDatePicker && (
+            <DateTimePicker
+              value={timestampDate}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              maximumDate={new Date()}
+              onChange={(event, selectedDate) => {
+                if (Platform.OS !== 'ios') setShowDatePicker(false);
+                if (selectedDate) {
+                  const updated = new Date(timestampDate);
+                  updated.setFullYear(
+                    selectedDate.getFullYear(),
+                    selectedDate.getMonth(),
+                    selectedDate.getDate(),
+                  );
+                  setTimestampDate(updated);
+                }
+              }}
+            />
+          )}
+
+          {Platform.OS === 'ios' && showDatePicker && (
+            <DoneBtn onPress={() => setShowDatePicker(false)}>
+              <DoneText>Done</DoneText>
+            </DoneBtn>
+          )}
+
+          {showTimePicker && (
+            <DateTimePicker
+              value={timestampDate}
+              mode="time"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={(event, selectedDate) => {
+                if (Platform.OS !== 'ios') setShowTimePicker(false);
+                if (selectedDate) {
+                  const updated = new Date(timestampDate);
+                  updated.setHours(
+                    selectedDate.getHours(),
+                    selectedDate.getMinutes(),
+                    selectedDate.getSeconds(),
+                    selectedDate.getMilliseconds(),
+                  );
+                  setTimestampDate(updated);
+                }
+              }}
+            />
+          )}
+
+          {Platform.OS === 'ios' && showTimePicker && (
+            <DoneBtn onPress={() => setShowTimePicker(false)}>
+              <DoneText>Done</DoneText>
+            </DoneBtn>
+          )}
         </Card>
 
         <Card>
-          <CardTitle>Duration</CardTitle>
+          <CardTitle>Duration Of Event</CardTitle>
           <Row>
             <Half>
               <Label>Minutes</Label>
@@ -106,7 +189,7 @@ export default function LogSeizureDetails({ route, navigation }) {
           <TextArea
             value={notes}
             onChangeText={setNotes}
-            placeholder="Anything else you want to record..."
+            placeholder="Any additional observations"
             placeholderTextColor="#8b7e76"
             multiline
           />
@@ -119,7 +202,7 @@ export default function LogSeizureDetails({ route, navigation }) {
               symptoms,
               symptomsNone,
               awareness,
-              timestampIso,
+              timestampIso, //  send this to summary / backend
               durationSeconds,
               patientState,
               medsTaken,
@@ -155,8 +238,13 @@ const TopBar = styled.View`
   justify-content: space-between;
 `;
 
-const BackBtn = styled.TouchableOpacity`padding: 6px;`;
-const TopIcon = styled(Icon)`font-size: 26px; color: #fff;`;
+const BackBtn = styled.TouchableOpacity`
+  padding: 6px;
+`;
+const TopIcon = styled(Icon)`
+  font-size: 26px;
+  color: #fff;
+`;
 const TopTitle = styled.Text`
   flex: 1;
   text-align: center;
@@ -164,7 +252,9 @@ const TopTitle = styled.Text`
   font-weight: 700;
   color: #fff;
 `;
-const TopSpacer = styled.View`width: 32px;`;
+const TopSpacer = styled.View`
+  width: 32px;
+`;
 
 const Card = styled.View`
   background-color: #ffffff;
@@ -201,13 +291,40 @@ const Input = styled.TextInput`
   color: #2f2f2f;
 `;
 
+const TouchableBox = styled.TouchableOpacity`
+  margin-top: 8px;
+  background-color: #f5efe6;
+  border-radius: 14px;
+  padding: 12px;
+`;
+
+const BoxText = styled.Text`
+  font-size: 14px;
+  color: #2f2f2f;
+`;
+
+const DoneBtn = styled.TouchableOpacity`
+  margin-top: 10px;
+  align-self: flex-end;
+  background-color: #b03060;
+  padding: 10px 16px;
+  border-radius: 12px;
+`;
+
+const DoneText = styled.Text`
+  color: #fff;
+  font-weight: 900;
+`;
+
 const Row = styled.View`
   flex-direction: row;
   justify-content: space-between;
   margin-top: 10px;
 `;
 
-const Half = styled.View`width: 48%;`;
+const Half = styled.View`
+  width: 48%;
+`;
 
 const PillRow = styled.View`
   flex-direction: row;

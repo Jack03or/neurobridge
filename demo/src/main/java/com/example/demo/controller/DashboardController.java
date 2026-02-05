@@ -2,8 +2,12 @@ package com.example.demo.controller;
 
 import com.example.demo.model.Child;
 import com.example.demo.model.FitBitMetrics;
+import com.example.demo.model.MedicationLog;
+import com.example.demo.model.SeizureLog;
 import com.example.demo.model.User;
 import com.example.demo.repository.ChildRepository;
+import com.example.demo.repository.MedicationLogRepository;
+import com.example.demo.repository.SeizureLogRepository;
 import com.example.demo.repository.UserRepository;
 import com.example.demo.service.FitbitService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,6 +16,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/dashboard")
@@ -27,6 +35,12 @@ public class DashboardController {
     @Autowired
     private FitbitService fitbitService;
 
+    @Autowired
+    private SeizureLogRepository seizureLogRepository;
+
+    @Autowired
+    private MedicationLogRepository medicationLogRepository;
+
     @GetMapping("/by-user/{userId}")
     public ResponseEntity<?> getDashboardForUser(@PathVariable Long userId) {
 
@@ -40,6 +54,12 @@ public class DashboardController {
             DashboardResponse response = new DashboardResponse();
             response.setHasChild(false);
             response.setMessage("No child linked to this user yet.");
+
+            // keep defaults consistent
+            response.setLastSeizureText("--");
+            response.setMedicationTakenToday(false);
+            response.setMedicationStatusText("Not logged");
+
             return ResponseEntity.ok(response);
         }
 
@@ -70,12 +90,50 @@ public class DashboardController {
             response.setRiskLevel("UNKNOWN");
         }
 
-        // seizure + medication still fake for now
-        response.setLastSeizureText("--");
-        response.setMedicationTakenToday(false);
-        response.setMedicationStatusText("Not logged");
+        //last seizure + medication status replaces place holders i had
+        applySeizureAndMedicationStatus(child, response);
 
         return ResponseEntity.ok(response);
+    }
+
+    // To populate siezure and med status
+    private void applySeizureAndMedicationStatus(Child child, DashboardResponse response) {
+        LocalDate today = LocalDate.now();
+
+        // ---- MEDICATION (today) ----
+        List<MedicationLog> todayLogs = medicationLogRepository.findByChildAndDate(child, today);
+
+        boolean anyLogged = !todayLogs.isEmpty();
+        boolean anyTaken = todayLogs.stream().anyMatch(MedicationLog::isTaken);
+
+        response.setMedicationTakenToday(anyTaken);
+
+        if (anyTaken) {
+            response.setMedicationStatusText("Taken today");
+        } else if (anyLogged) {
+            response.setMedicationStatusText("Missed today");
+        } else {
+            response.setMedicationStatusText("Not logged");
+        }
+
+        // ---- LAST SEIZURE (days ago) ----
+        Optional<SeizureLog> latest = seizureLogRepository.findFirstByChildOrderByTimestampDesc(child);
+
+        if (latest.isEmpty() || latest.get().getTimestamp() == null) {
+            response.setLastSeizureText("--");
+            return;
+        }
+
+        LocalDateTime ts = latest.get().getTimestamp();
+        long daysAgo = ChronoUnit.DAYS.between(ts.toLocalDate(), today);
+
+        if (daysAgo <= 0) {
+            response.setLastSeizureText("Today");
+        } else if (daysAgo == 1) {
+            response.setLastSeizureText("1 day ago");
+        } else {
+            response.setLastSeizureText(daysAgo + " days ago");
+        }
     }
 
     // DTO for dashboard response

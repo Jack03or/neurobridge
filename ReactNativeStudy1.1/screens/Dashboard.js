@@ -153,7 +153,7 @@ export default function Dashboard({ route, navigation }) {
                 <StatusInner>
                   <StatusLabel>Today</StatusLabel>
                   <StatusValue>{riskDisplay}</StatusValue>
-                  <StatusHint>Seizure risk (coming soon)</StatusHint>
+                  <StatusHint>(Seizure risk level: add soon)</StatusHint>
                 </StatusInner>
               </StatusRing>
 
@@ -210,16 +210,14 @@ export default function Dashboard({ route, navigation }) {
             <ActionText>Generate Report</ActionText>
           </ActionTile>
 
-          <ActionTile
-            onPress={() => Alert.alert('Seizure Diary', 'Coming next!')}
-          >
-            <ActionIcon name="calendar-text" />
-            <ActionText>Seizure Diary</ActionText>
+          <ActionTile onPress={() => navigation.navigate('SeizureDiary', { userId })}>
+          <ActionIcon name="calendar-text" />
+          <ActionText>Seizure Diary</ActionText>
           </ActionTile>
 
           <ActionTileDisabled>
             <ActionIcon name="lightbulb-on-outline" />
-            <ActionText>Coming Soon</ActionText>
+            <ActionText>Next featue placeholder</ActionText>
           </ActionTileDisabled>
         </ActionsContainer>
       </ScrollView>
