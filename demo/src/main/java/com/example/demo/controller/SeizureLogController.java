@@ -24,7 +24,7 @@ public class SeizureLogController {
     @Autowired private ChildRepository childRepository;
     @Autowired private SeizureLogRepository seizureLogRepository;
 
-    // ---------------- CREATE ----------------
+    //CREATE 
     @PostMapping("/by-user/{userId}")
     public ResponseEntity<?> createSeizure(@PathVariable Long userId, @RequestBody CreateSeizureRequest req) {
 
@@ -128,7 +128,7 @@ public class SeizureLogController {
         public String activityState; // ACTIVE / RESTING
         public Boolean incontinence;
 
-        // ✅ renamed from trigger -> seizureTrigger
+        // renamed from trigger -> seizureTrigger cus of db reserved word
         public String seizureTrigger;
 
         public String postEffects;

@@ -11,4 +11,10 @@ public interface MedicationLogRepository extends JpaRepository<MedicationLog, Lo
 
     // all medication entries for this child on a specific date
     List<MedicationLog> findByChildAndDate(Child child, LocalDate date);
+
+    // all medication entries for this child (for diary)
+    List<MedicationLog> findByChildOrderByDateDesc(Child child);
+
+    // range query (for calendar / month views later)
+    List<MedicationLog> findByChildAndDateBetweenOrderByDateDesc(Child child, LocalDate from, LocalDate to);
 }
