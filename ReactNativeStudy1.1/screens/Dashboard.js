@@ -204,7 +204,7 @@ export default function Dashboard({ route, navigation }) {
           </ActionTile>
 
           <ActionTile
-            onPress={() => Alert.alert('Generate Report', 'Coming next!')}
+            onPress={() => navigation.navigate('GenerateReport', { userId })}
           >
             <ActionIcon name="file-chart" />
             <ActionText>Generate Report</ActionText>

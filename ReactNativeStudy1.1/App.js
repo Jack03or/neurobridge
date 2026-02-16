@@ -20,6 +20,9 @@ import LogMedicationEvent from './screens/LogMedicationEvent';
 import DiaryEventView from './screens/DiaryEventView';
 import SeizureEventView from './screens/SeizureEventView';
 import LogAppointmentEvent from './screens/LogAppointmentEvent';
+import GenerateReport from './screens/GenerateReport';
+import SavedReports from './screens/SavedReports';
+import ReportPreview from './screens/ReportPreview';
 
 
 
@@ -50,7 +53,10 @@ export default function App() {
         <Stack.Screen name="SeizureEventView" component={SeizureEventView} />
         <Stack.Screen name="LogAppointmentEvent" component={LogAppointmentEvent} />
 
-
+        {/* Reports */}
+        <Stack.Screen name="GenerateReport" component={GenerateReport} />
+        <Stack.Screen name="SavedReports" component={SavedReports} />
+        <Stack.Screen name="ReportPreview" component={ReportPreview} />
 
 
       </Stack.Navigator>

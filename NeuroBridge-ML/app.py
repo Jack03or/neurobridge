@@ -11,6 +11,7 @@ app = FastAPI()
 
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "model.joblib")
 METRICS_PATH = os.path.join(os.path.dirname(__file__), "metrics.json")
+INSIGHTS_PATH = os.path.join(os.path.dirname(__file__), "insights.json")
 
 model = None
 model_loaded = False
@@ -36,6 +37,16 @@ def load_model():
 @app.get("/health")
 def health():
     return {"status": "ok", "model_loaded": model_loaded}
+
+@app.get("/insights")
+def insights():
+    if not os.path.exists(INSIGHTS_PATH):
+        raise HTTPException(status_code=404, detail="Insights not found. Train first.")
+    try:
+        with open(INSIGHTS_PATH, "r") as f:
+            return json.load(f)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to load insights")
 
 # ---- Helper: clamp + avoid 0%/100% medical-style certainty ----
 def safe_probability(p: float) -> float:

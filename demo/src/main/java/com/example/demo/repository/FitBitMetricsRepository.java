@@ -19,4 +19,7 @@ public interface FitBitMetricsRepository extends JpaRepository<FitBitMetrics, Lo
 
     // metrics for a specific child on a specific day
     Optional<FitBitMetrics> findByChildAndDate(Child child, LocalDate date);
+
+    // metrics within a date range (for reports)
+    List<FitBitMetrics> findByChildAndDateBetweenOrderByDateAsc(Child child, LocalDate from, LocalDate to);
 }

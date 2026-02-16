@@ -56,6 +56,19 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- Thymeleaf for HTML templates -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-thymeleaf</artifactId>
+        </dependency>
+
+        <!-- HTML -> PDF rendering -->
+        <dependency>
+            <groupId>com.openhtmltopdf</groupId>
+            <artifactId>openhtmltopdf-pdfbox</artifactId>
+            <version>1.0.10</version>
+        </dependency>
+
         <!-- Testing (optional, for unit tests) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
