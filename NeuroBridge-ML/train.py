@@ -69,7 +69,7 @@ def coerce_bit(value) -> int:
         return np.nan
 
 
-def load_tables() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def load_tables() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     seizure_df = read_sql(
         """
         SELECT id, child_id, timestamp
@@ -79,9 +79,15 @@ def load_tables() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     )
     meds_df = read_sql(
         """
-        SELECT child_id, date, taken, taken_at
+        SELECT child_id, date, taken, taken_at, schedule_id
         FROM medication_log
         WHERE date IS NOT NULL
+        """
+    )
+    schedules_df = read_sql(
+        """
+        SELECT id, child_id, medication_name, dose, default_time, active, created_at
+        FROM medication_schedule
         """
     )
     fitbit_df = read_sql(
@@ -99,20 +105,40 @@ def load_tables() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     meds_df["date"] = pd.to_datetime(meds_df["date"]).dt.date
     meds_df["taken"] = meds_df["taken"].apply(coerce_bit)
     meds_df["taken_at"] = pd.to_datetime(meds_df["taken_at"])
+    meds_df["schedule_id"] = pd.to_numeric(meds_df["schedule_id"], errors="coerce")
+
+    if not schedules_df.empty:
+        schedules_df["default_time"] = pd.to_datetime(
+            schedules_df["default_time"], format="%H:%M:%S", errors="coerce"
+        ).dt.time
+        schedules_df["active"] = schedules_df["active"].apply(coerce_bit).fillna(0).astype(int)
+        schedules_df["created_at"] = pd.to_datetime(schedules_df["created_at"], errors="coerce")
 
     fitbit_df["date"] = pd.to_datetime(fitbit_df["date"]).dt.date
     fitbit_df["latest_heart_rate_at"] = pd.to_datetime(fitbit_df["latest_heart_rate_at"])
     fitbit_df["created_at"] = pd.to_datetime(fitbit_df["created_at"])
 
-    return seizure_df, meds_df, fitbit_df
+    return seizure_df, meds_df, fitbit_df, schedules_df
 
 
-def build_meds_daily(meds_df: pd.DataFrame) -> pd.DataFrame:
-    if meds_df.empty:
+def build_meds_daily(
+    meds_df: pd.DataFrame,
+    schedules_df: pd.DataFrame,
+    base_dates_df: pd.DataFrame,
+    late_grace_minutes: int = 60,
+) -> pd.DataFrame:
+    if base_dates_df.empty:
         return pd.DataFrame(
             columns=[
                 "child_id",
                 "date",
+                "scheduled_meds_count",
+                "taken_meds_count",
+                "missed_meds_count",
+                "late_meds_count",
+                "adherence_ratio",
+                "any_missed_med",
+                "any_late_med",
                 "med_taken_today",
                 "med_missed_today",
                 "med_logged_today",
@@ -120,25 +146,146 @@ def build_meds_daily(meds_df: pd.DataFrame) -> pd.DataFrame:
             ]
         )
 
-    meds_daily = (
+    meds_df = meds_df.copy()
+    schedules_df = schedules_df.copy()
+
+    active_schedules = schedules_df[schedules_df["active"] == 1].copy() if not schedules_df.empty else schedules_df
+    schedule_counts = (
+        active_schedules.groupby("child_id")["id"].nunique().rename("scheduled_meds_count")
+        if not active_schedules.empty
+        else pd.Series(dtype=float)
+    )
+
+    logs = (
         meds_df.groupby(["child_id", "date"])
         .agg(
-            med_taken_today=("taken", "max"),
+            med_taken_today=("taken", lambda x: int((x == 1).any())),
             med_missed_today=("taken", lambda x: int((x == 0).any())),
             med_logged_today=("taken", "size"),
+            last_taken_at=("taken_at", "max"),
         )
         .reset_index()
+        if not meds_df.empty
+        else pd.DataFrame(columns=["child_id", "date", "med_taken_today", "med_missed_today", "med_logged_today", "last_taken_at"])
     )
-    meds_daily["med_logged_today"] = (meds_daily["med_logged_today"] > 0).astype(int)
 
-    meds_taken = meds_df[(meds_df["taken"] == 1) & meds_df["taken_at"].notna()].copy()
-    last_taken_daily = (
-        meds_taken.groupby(["child_id", "date"])["taken_at"].max().reset_index()
+    scheduled_taken = pd.DataFrame(columns=["child_id", "date", "taken_scheduled"])
+    scheduled_missed = pd.DataFrame(columns=["child_id", "date", "missed_scheduled"])
+    legacy_taken = pd.DataFrame(columns=["child_id", "date", "taken_legacy"])
+    legacy_missed = pd.DataFrame(columns=["child_id", "date", "missed_legacy"])
+    late_daily = pd.DataFrame(columns=["child_id", "date", "late_meds_count"])
+
+    if not meds_df.empty:
+        scheduled_logs = meds_df[meds_df["schedule_id"].notna()].copy()
+        if not scheduled_logs.empty:
+            scheduled_taken = (
+                scheduled_logs[scheduled_logs["taken"] == 1]
+                .groupby(["child_id", "date"])["schedule_id"]
+                .nunique()
+                .rename("taken_scheduled")
+                .reset_index()
+            )
+            scheduled_missed = (
+                scheduled_logs[scheduled_logs["taken"] == 0]
+                .groupby(["child_id", "date"])["schedule_id"]
+                .nunique()
+                .rename("missed_scheduled")
+                .reset_index()
+            )
+
+            if not active_schedules.empty:
+                late_logs = scheduled_logs[
+                    (scheduled_logs["taken"] == 1) & scheduled_logs["taken_at"].notna()
+                ].merge(
+                    active_schedules[["id", "default_time"]],
+                    left_on="schedule_id",
+                    right_on="id",
+                    how="left",
+                )
+                late_logs = late_logs[late_logs["default_time"].notna()].copy()
+                if not late_logs.empty:
+                    late_logs["taken_minutes"] = (
+                        late_logs["taken_at"].dt.hour * 60 + late_logs["taken_at"].dt.minute
+                    )
+                    late_logs["default_minutes"] = late_logs["default_time"].apply(
+                        lambda t: t.hour * 60 + t.minute if pd.notna(t) else np.nan
+                    )
+                    late_logs["is_late"] = (
+                        late_logs["taken_minutes"] > (late_logs["default_minutes"] + late_grace_minutes)
+                    ).astype(int)
+                    late_daily = (
+                        late_logs.groupby(["child_id", "date"])["is_late"]
+                        .sum()
+                        .rename("late_meds_count")
+                        .reset_index()
+                    )
+
+        legacy_logs = meds_df[meds_df["schedule_id"].isna()].copy()
+        if not legacy_logs.empty:
+            legacy_taken = (
+                legacy_logs[legacy_logs["taken"] == 1]
+                .groupby(["child_id", "date"])
+                .size()
+                .rename("taken_legacy")
+                .reset_index()
+            )
+            legacy_missed = (
+                legacy_logs[legacy_logs["taken"] == 0]
+                .groupby(["child_id", "date"])
+                .size()
+                .rename("missed_legacy")
+                .reset_index()
+            )
+
+    meds_daily = base_dates_df.drop_duplicates().copy()
+    meds_daily = meds_daily.merge(logs, on=["child_id", "date"], how="left")
+    meds_daily = meds_daily.merge(scheduled_taken, on=["child_id", "date"], how="left")
+    meds_daily = meds_daily.merge(scheduled_missed, on=["child_id", "date"], how="left")
+    meds_daily = meds_daily.merge(legacy_taken, on=["child_id", "date"], how="left")
+    meds_daily = meds_daily.merge(legacy_missed, on=["child_id", "date"], how="left")
+    meds_daily = meds_daily.merge(late_daily, on=["child_id", "date"], how="left")
+
+    meds_daily["scheduled_meds_count"] = meds_daily["child_id"].map(schedule_counts).fillna(0)
+    meds_daily["taken_scheduled"] = meds_daily["taken_scheduled"].fillna(0)
+    meds_daily["missed_scheduled"] = meds_daily["missed_scheduled"].fillna(0)
+    meds_daily["taken_legacy"] = meds_daily["taken_legacy"].fillna(0)
+    meds_daily["missed_legacy"] = meds_daily["missed_legacy"].fillna(0)
+    meds_daily["late_meds_count"] = meds_daily["late_meds_count"].fillna(0)
+
+    meds_daily["taken_meds_count"] = meds_daily["taken_scheduled"] + meds_daily["taken_legacy"]
+    inferred_missed = (meds_daily["scheduled_meds_count"] - meds_daily["taken_scheduled"]).clip(lower=0)
+    meds_daily["missed_meds_count"] = np.maximum(
+        meds_daily["missed_scheduled"] + meds_daily["missed_legacy"], inferred_missed
     )
-    last_taken_daily = last_taken_daily.rename(columns={"taken_at": "last_taken_at"})
 
-    meds_daily = meds_daily.merge(last_taken_daily, on=["child_id", "date"], how="left")
-    return meds_daily
+    meds_daily["adherence_ratio"] = np.where(
+        meds_daily["scheduled_meds_count"] > 0,
+        meds_daily["taken_scheduled"] / meds_daily["scheduled_meds_count"],
+        np.where(meds_daily["taken_meds_count"] > 0, 1.0, 0.0),
+    )
+    meds_daily["any_missed_med"] = (meds_daily["missed_meds_count"] > 0).astype(int)
+    meds_daily["any_late_med"] = (meds_daily["late_meds_count"] > 0).astype(int)
+
+    meds_daily["med_taken_today"] = meds_daily["med_taken_today"].fillna(0).astype(int)
+    meds_daily["med_missed_today"] = meds_daily["med_missed_today"].fillna(0).astype(int)
+    meds_daily["med_logged_today"] = meds_daily["med_logged_today"].fillna(0).astype(int)
+
+    keep_cols = [
+        "child_id",
+        "date",
+        "scheduled_meds_count",
+        "taken_meds_count",
+        "missed_meds_count",
+        "late_meds_count",
+        "adherence_ratio",
+        "any_missed_med",
+        "any_late_med",
+        "med_taken_today",
+        "med_missed_today",
+        "med_logged_today",
+        "last_taken_at",
+    ]
+    return meds_daily[keep_cols]
 
 
 def add_time_since_last_med(events_df: pd.DataFrame, meds_df: pd.DataFrame) -> pd.DataFrame:
@@ -180,9 +327,17 @@ def choose_negative_timestamp(row: pd.Series) -> pd.Timestamp:
 
 
 def build_feature_rows(
-    seizure_df: pd.DataFrame, meds_df: pd.DataFrame, fitbit_df: pd.DataFrame
+    seizure_df: pd.DataFrame, meds_df: pd.DataFrame, fitbit_df: pd.DataFrame, schedules_df: pd.DataFrame
 ) -> pd.DataFrame:
-    meds_daily = build_meds_daily(meds_df)
+    base_dates_df = pd.concat(
+        [
+            seizure_df[["child_id", "date"]],
+            fitbit_df[["child_id", "date"]],
+            meds_df[["child_id", "date"]] if not meds_df.empty else pd.DataFrame(columns=["child_id", "date"]),
+        ],
+        ignore_index=True,
+    ).dropna()
+    meds_daily = build_meds_daily(meds_df, schedules_df, base_dates_df)
 
     seizures = (
         seizure_df.merge(fitbit_df, on=["child_id", "date"], how="left")
@@ -214,11 +369,39 @@ def build_feature_rows(
     events["sleep_score"] = (7.5 - events["sleep_hours"]).clip(lower=0) * 1.5
     events["hrv_score"] = (55 - events["hrv"]).clip(lower=0)
     events["hr_score"] = (events["latest_heart_rate"] - 85).clip(lower=0)
+    events["low_sleep_and_missed_meds"] = (
+        (events["sleep_hours"] < 6.0) & (events["any_missed_med"] == 1)
+    ).astype(int)
 
-    for col in ["med_taken_today", "med_missed_today", "med_logged_today"]:
+    for col in [
+        "med_taken_today",
+        "med_missed_today",
+        "med_logged_today",
+        "scheduled_meds_count",
+        "taken_meds_count",
+        "missed_meds_count",
+        "late_meds_count",
+        "adherence_ratio",
+        "any_missed_med",
+        "any_late_med",
+    ]:
         if col not in events:
             events[col] = np.nan
-        events[col] = events[col].fillna(0).astype(int)
+        events[col] = events[col].fillna(0)
+
+    int_cols = [
+        "med_taken_today",
+        "med_missed_today",
+        "med_logged_today",
+        "scheduled_meds_count",
+        "taken_meds_count",
+        "missed_meds_count",
+        "late_meds_count",
+        "any_missed_med",
+        "any_late_med",
+    ]
+    for col in int_cols:
+        events[col] = events[col].astype(int)
 
     return events
 
@@ -228,9 +411,12 @@ def train_model(events: pd.DataFrame, out_model: Path, out_metrics: Path) -> Non
         "sleep_score",
         "hrv_score",
         "hr_score",
-        "med_missed_today",
-        "med_taken_today",
-        "med_logged_today",
+        "adherence_ratio",
+        "missed_meds_count",
+        "late_meds_count",
+        "any_missed_med",
+        "any_late_med",
+        "low_sleep_and_missed_meds",
         "time_since_last_med_hours",
         "hour_of_day",
         "day_of_week",
@@ -251,7 +437,7 @@ def train_model(events: pd.DataFrame, out_model: Path, out_metrics: Path) -> Non
 
     scale_pos_weight = neg / max(pos, 1)
 
-    monotone_constraints = (1, 1, 1, 1, -1, 0, 1, 0, 0)
+    monotone_constraints = (1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0)
 
     model = Pipeline(
         steps=[
@@ -313,8 +499,10 @@ def compute_insights(events: pd.DataFrame) -> dict:
     seizures = events[events["label"] == 1]
     non = events[events["label"] == 0]
 
-    missed_meds_rate_seiz = rate(seizures, seizures["med_missed_today"] == 1)
-    missed_meds_rate_non = rate(non, non["med_missed_today"] == 1)
+    missed_meds_rate_seiz = rate(seizures, seizures["any_missed_med"] == 1)
+    missed_meds_rate_non = rate(non, non["any_missed_med"] == 1)
+    late_meds_rate_seiz = rate(seizures, seizures["any_late_med"] == 1)
+    late_meds_rate_non = rate(non, non["any_late_med"] == 1)
 
     low_sleep_thresh = 6.0
     low_sleep_seiz = rate(seizures, seizures["sleep_hours"] < low_sleep_thresh)
@@ -332,11 +520,15 @@ def compute_insights(events: pd.DataFrame) -> dict:
 
         combined_seiz = rate(
             seizures,
-            (seizures["med_missed_today"] == 1) & (seizures["sleep_hours"] < low_sleep_thresh),
+            (seizures["any_missed_med"] == 1) & (seizures["sleep_hours"] < low_sleep_thresh),
         )
         if combined_seiz > 0.2:
             insights.append(
                 "Missed medication plus low sleep showed up together on seizure days."
+            )
+        if late_meds_rate_seiz > late_meds_rate_non + 0.1:
+            insights.append(
+                "Late medication was more common on seizure days."
             )
 
         hour_bins = pd.cut(
@@ -377,6 +569,8 @@ def compute_insights(events: pd.DataFrame) -> dict:
         "total_non_seizure": total_non,
         "missed_meds_rate_seizure": missed_meds_rate_seiz,
         "missed_meds_rate_non_seizure": missed_meds_rate_non,
+        "late_meds_rate_seizure": late_meds_rate_seiz,
+        "late_meds_rate_non_seizure": late_meds_rate_non,
         "low_sleep_rate_seizure": low_sleep_seiz,
         "low_sleep_rate_non_seizure": low_sleep_non,
         "insights": insights,
@@ -386,10 +580,10 @@ def compute_insights(events: pd.DataFrame) -> dict:
 
 def main() -> None:
     print("Loading data from MySQL...")
-    seizure_df, meds_df, fitbit_df = load_tables()
+    seizure_df, meds_df, fitbit_df, schedules_df = load_tables()
 
     print("Building feature rows...")
-    events = build_feature_rows(seizure_df, meds_df, fitbit_df)
+    events = build_feature_rows(seizure_df, meds_df, fitbit_df, schedules_df)
 
     out_model = Path("model.joblib")
     out_metrics = Path("metrics.json")
