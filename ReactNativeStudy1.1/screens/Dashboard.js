@@ -1,46 +1,104 @@
 // screens/Dashboard.js
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StatusBar, Alert, ScrollView } from 'react-native';
+import { ActivityIndicator, StatusBar, Alert, ScrollView, Platform, Modal, Pressable } from 'react-native';
 import styled from 'styled-components/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { BASE_URL } from '../config';
 
 export default function Dashboard({ route, navigation }) {
   const { userId } = route.params;
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [schedules, setSchedules] = useState([]);
+  const [pendingSchedule, setPendingSchedule] = useState(null);
+  const [takenAt, setTakenAt] = useState(new Date());
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [showMedicationModal, setShowMedicationModal] = useState(false);
+
+  const fetchDashboard = async () => {
+    try {
+      const response = await fetch(
+        `${BASE_URL}/api/dashboard/by-user/${userId}`,
+      );
+      const text = await response.text();
+
+      if (!response.ok) {
+        Alert.alert('Error', text || 'Could not load dashboard data.');
+        return;
+      }
+
+      let data = null;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        Alert.alert('Error', 'Unexpected server response.');
+        return;
+      }
+
+      setDashboard(data);
+    } catch (err) {
+      Alert.alert('Error', 'Could not load dashboard information.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchSchedules = async () => {
+    try {
+      const response = await fetch(`${BASE_URL}/api/medication-schedules/by-user/${userId}`);
+      const text = await response.text();
+      if (!response.ok) return;
+      setSchedules(text ? JSON.parse(text) : []);
+    } catch (err) {
+      setSchedules([]);
+    }
+  };
 
   useEffect(() => {
-    const fetchDashboard = async () => {
-      try {
-        const response = await fetch(
-          `${BASE_URL}/api/dashboard/by-user/${userId}`,
-        );
-        const text = await response.text();
-
-        if (!response.ok) {
-          Alert.alert('Error', text || 'Could not load dashboard data.');
-          return;
-        }
-
-        let data = null;
-        try {
-          data = JSON.parse(text);
-        } catch (e) {
-          Alert.alert('Error', 'Unexpected server response.');
-          return;
-        }
-
-        setDashboard(data);
-      } catch (err) {
-        Alert.alert('Error', 'Could not load dashboard information.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchDashboard();
+    fetchSchedules();
   }, [userId]);
+
+  const toIsoLocal = (d) => {
+    const pad = (v) => String(v).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  };
+
+  const markTakenNow = async (scheduleId, time) => {
+    try {
+      const response = await fetch(`${BASE_URL}/api/medications/mark-taken/by-user/${userId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scheduleId,
+          takenAt: toIsoLocal(time),
+        }),
+      });
+      const text = await response.text();
+      if (!response.ok) {
+        Alert.alert('Error', text || 'Could not mark medication taken.');
+        return;
+      }
+      await fetchDashboard();
+      Alert.alert('Saved', 'Medication marked as taken.');
+    } catch (err) {
+      Alert.alert('Error', 'Could not mark medication taken.');
+    }
+  };
+
+  const handleMedicationTap = () => {
+    if (!schedules.length) {
+      Alert.alert('No medication set', 'Add medication in child setup first.');
+      return;
+    }
+    setPendingSchedule(schedules[0]);
+    setTakenAt(new Date());
+    setShowMedicationModal(true);
+  };
+
+  const formatTime = (d) =>
+    d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 
   const calculateAgeFromDob = (dobString) => {
     if (!dobString) return '-';
@@ -124,6 +182,7 @@ export default function Dashboard({ route, navigation }) {
 
                 <SummaryItem>
                   <SummaryLabel>Medication</SummaryLabel>
+                  <MedicationStatusButton onPress={handleMedicationTap}>
                   <MedicationStatus>
                     {dashboard.medicationTakenToday ? (
                       <>
@@ -139,6 +198,7 @@ export default function Dashboard({ route, navigation }) {
                       </>
                     )}
                   </MedicationStatus>
+                  </MedicationStatusButton>
                 </SummaryItem>
               </SummaryRow>
 
@@ -221,6 +281,120 @@ export default function Dashboard({ route, navigation }) {
           </ActionTileDisabled>
         </ActionsContainer>
       </ScrollView>
+
+      {showMedicationModal && (
+        <Modal transparent animationType="fade" onRequestClose={() => setShowMedicationModal(false)}>
+          <Pressable
+            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' }}
+            onPress={() => {
+              setShowMedicationModal(false);
+              setShowTimePicker(false);
+            }}
+          >
+            <Pressable style={{ marginTop: 'auto' }} onPress={() => {}}>
+              <MedicationSheet>
+                <SheetTitle>Did they take medication today?</SheetTitle>
+                <SheetHint>Select medication and time, then save.</SheetHint>
+
+                <PillWrap>
+                  {schedules.map((s) => (
+                    <SheetPill
+                      key={s.id}
+                      active={pendingSchedule?.id === s.id}
+                      onPress={() => setPendingSchedule(s)}
+                    >
+                      <SheetPillText active={pendingSchedule?.id === s.id}>
+                        {s.medicationName}
+                        {s.dose ? ` (${s.dose})` : ''}
+                      </SheetPillText>
+                    </SheetPill>
+                  ))}
+                </PillWrap>
+
+                <TimeRow onPress={() => setShowTimePicker(true)}>
+                  <TimeLabel>Time taken</TimeLabel>
+                  <TimeValue>{formatTime(takenAt)}</TimeValue>
+                </TimeRow>
+
+                {showTimePicker && (
+                  <DateTimePicker
+                    value={takenAt}
+                    mode="time"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={(event, selectedDate) => {
+                      if (Platform.OS !== 'ios') setShowTimePicker(false);
+                      if (selectedDate) setTakenAt(selectedDate);
+                    }}
+                  />
+                )}
+
+                {Platform.OS === 'ios' && showTimePicker && (
+                  <PickerDoneBtn onPress={() => setShowTimePicker(false)}>
+                    <PickerDoneText>Done</PickerDoneText>
+                  </PickerDoneBtn>
+                )}
+
+                <ActionRow>
+                  <CancelBtn
+                    onPress={() => {
+                      setShowMedicationModal(false);
+                      setShowTimePicker(false);
+                    }}
+                  >
+                    <CancelText>Cancel</CancelText>
+                  </CancelBtn>
+                  <SaveBtn
+                    onPress={async () => {
+                      if (!pendingSchedule) return;
+                      setShowMedicationModal(false);
+                      setShowTimePicker(false);
+                      await markTakenNow(pendingSchedule.id, takenAt);
+                      setPendingSchedule(null);
+                    }}
+                  >
+                    <SaveText>Mark Taken</SaveText>
+                  </SaveBtn>
+                </ActionRow>
+              </MedicationSheet>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
+
+      {!showMedicationModal && showTimePicker && (
+        <DateTimePicker
+          value={takenAt}
+          mode="time"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={async (event, selectedDate) => {
+            if (Platform.OS !== 'ios') setShowTimePicker(false);
+            if (!selectedDate) return;
+
+            setTakenAt(selectedDate);
+
+            if (Platform.OS !== 'ios' && pendingSchedule) {
+              await markTakenNow(pendingSchedule.id, selectedDate);
+              setPendingSchedule(null);
+            }
+          }}
+        />
+      )}
+
+      {Platform.OS === 'ios' && !showMedicationModal && showTimePicker && (
+        <PickerDoneWrap>
+          <PickerDoneBtn
+            onPress={async () => {
+              setShowTimePicker(false);
+              if (pendingSchedule) {
+                await markTakenNow(pendingSchedule.id, takenAt);
+                setPendingSchedule(null);
+              }
+            }}
+          >
+            <PickerDoneText>Done</PickerDoneText>
+          </PickerDoneBtn>
+        </PickerDoneWrap>
+      )}
     </Container>
   );
 }
@@ -340,6 +514,10 @@ const SummaryValue = styled.Text`
 const MedicationStatus = styled.View`
   flex-direction: row;
   align-items: center;
+`;
+
+const MedicationStatusButton = styled.TouchableOpacity`
+  align-self: flex-start;
 `;
 
 const MedicationIcon = styled(Icon)`
@@ -503,4 +681,121 @@ const ActionText = styled.Text`
   font-size: 14px;
   font-weight: 600;
   text-align: center;
+`;
+
+const MedicationSheet = styled.View`
+  background-color: #ffffff;
+  border-top-left-radius: 22px;
+  border-top-right-radius: 22px;
+  padding: 16px;
+`;
+
+const SheetTitle = styled.Text`
+  font-size: 17px;
+  font-weight: 800;
+  color: #2f2f2f;
+`;
+
+const SheetHint = styled.Text`
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6b5e58;
+`;
+
+const PillWrap = styled.View`
+  margin-top: 12px;
+  flex-direction: row;
+  flex-wrap: wrap;
+`;
+
+const SheetPill = styled.TouchableOpacity`
+  padding: 10px 12px;
+  border-radius: 14px;
+  background-color: ${(p) => (p.active ? '#e7c7d3' : '#f5efe6')};
+  border-width: 2px;
+  border-color: ${(p) => (p.active ? '#b03060' : 'transparent')};
+  margin-right: 8px;
+  margin-bottom: 8px;
+`;
+
+const SheetPillText = styled.Text`
+  font-size: 12px;
+  font-weight: 700;
+  color: ${(p) => (p.active ? '#b03060' : '#2f2f2f')};
+`;
+
+const TimeRow = styled.TouchableOpacity`
+  margin-top: 12px;
+  background-color: #f5efe6;
+  border-radius: 14px;
+  padding: 12px;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+`;
+
+const TimeLabel = styled.Text`
+  font-size: 12px;
+  color: #6b5e58;
+  font-weight: 700;
+`;
+
+const TimeValue = styled.Text`
+  font-size: 14px;
+  color: #2f2f2f;
+  font-weight: 700;
+`;
+
+const ActionRow = styled.View`
+  margin-top: 14px;
+  flex-direction: row;
+  justify-content: space-between;
+`;
+
+const CancelBtn = styled.TouchableOpacity`
+  flex: 1;
+  margin-right: 8px;
+  border-radius: 12px;
+  border-width: 1px;
+  border-color: #b03060;
+  padding: 12px;
+  align-items: center;
+`;
+
+const CancelText = styled.Text`
+  color: #b03060;
+  font-size: 13px;
+  font-weight: 700;
+`;
+
+const SaveBtn = styled.TouchableOpacity`
+  flex: 1;
+  margin-left: 8px;
+  border-radius: 12px;
+  background-color: #b03060;
+  padding: 12px;
+  align-items: center;
+`;
+
+const SaveText = styled.Text`
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+`;
+
+const PickerDoneWrap = styled.View`
+  padding: 0 24px 20px;
+`;
+
+const PickerDoneBtn = styled.TouchableOpacity`
+  background-color: #b03060;
+  border-radius: 12px;
+  padding: 10px 16px;
+  align-self: flex-end;
+`;
+
+const PickerDoneText = styled.Text`
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
 `;

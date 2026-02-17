@@ -17,6 +17,10 @@ public class MedicationLog {
     @JoinColumn(name = "child_id")
     private Child child;
 
+    @ManyToOne
+    @JoinColumn(name = "schedule_id")
+    private MedicationSchedule schedule;
+
     // name of the medication (optional if I want a very simple version)
     @Column(name = "medication_name", length = 100)
     private String medicationName;
@@ -53,6 +57,14 @@ public class MedicationLog {
 
     public void setChild(Child child) {
         this.child = child;
+    }
+
+    public MedicationSchedule getSchedule() {
+        return schedule;
+    }
+
+    public void setSchedule(MedicationSchedule schedule) {
+        this.schedule = schedule;
     }
 
     public String getMedicationName() {

@@ -4,6 +4,7 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   TouchableOpacity,
@@ -11,6 +12,7 @@ import {
 import styled from 'styled-components/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { CalendarProvider, WeekCalendar } from 'react-native-calendars';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { BASE_URL } from '../config';
 
 export default function SeizureDiary({ route, navigation }) {
@@ -23,21 +25,27 @@ export default function SeizureDiary({ route, navigation }) {
   const [seizures, setSeizures] = useState([]);
   const [meds, setMeds] = useState([]);
   const [appointments, setAppointments] = useState([]);
+  const [schedules, setSchedules] = useState([]);
+  const [pendingSchedule, setPendingSchedule] = useState(null);
+  const [takenAt, setTakenAt] = useState(new Date());
+  const [showTimePicker, setShowTimePicker] = useState(false);
 
   const [showFabMenu, setShowFabMenu] = useState(false);
 
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [sRes, mRes, aRes] = await Promise.all([
+      const [sRes, mRes, aRes, scRes] = await Promise.all([
         fetch(`${BASE_URL}/api/seizures/by-user/${userId}`),
         fetch(`${BASE_URL}/api/medications/by-user/${userId}`),
         fetch(`${BASE_URL}/api/appointments/by-user/${userId}`),
+        fetch(`${BASE_URL}/api/medication-schedules/by-user/${userId}`),
       ]);
 
       const sText = await sRes.text();
       const mText = await mRes.text();
       const aText = await aRes.text();
+      const scText = await scRes.text();
 
       if (!sRes.ok) {
         Alert.alert('Error', sText || 'Could not load seizures.');
@@ -58,6 +66,12 @@ export default function SeizureDiary({ route, navigation }) {
         setAppointments([]);
       } else {
         setAppointments(aText ? JSON.parse(aText) : []);
+      }
+
+      if (!scRes.ok) {
+        setSchedules([]);
+      } else {
+        setSchedules(scText ? JSON.parse(scText) : []);
       }
     } catch (e) {
       Alert.alert('Error', 'Could not load diary data.');
@@ -172,6 +186,72 @@ export default function SeizureDiary({ route, navigation }) {
     return combined;
   }, [selectedDate, seizures, meds, appointments, filter]);
 
+  const toIsoLocal = (d) => {
+    const pad = (v) => String(v).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  };
+
+  const markTakenForSelectedDate = async (scheduleId, time) => {
+    try {
+      const response = await fetch(`${BASE_URL}/api/medications/mark-taken/by-user/${userId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scheduleId,
+          date: selectedDate,
+          takenAt: toIsoLocal(time),
+        }),
+      });
+      const text = await response.text();
+      if (!response.ok) {
+        Alert.alert('Error', text || 'Could not mark medication taken.');
+        return;
+      }
+      await loadAll();
+      Alert.alert('Saved', 'Medication marked as taken.');
+    } catch (err) {
+      Alert.alert('Error', 'Could not mark medication taken.');
+    }
+  };
+
+  const onMarkMedication = () => {
+    if (!schedules.length) {
+      Alert.alert('No medication set', 'Add medication schedule first.');
+      return;
+    }
+
+    if (schedules.length === 1) {
+      const schedule = schedules[0];
+      Alert.alert(
+        'Medication taken?',
+        `${schedule.medicationName}${schedule.dose ? ` (${schedule.dose})` : ''}`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Yes',
+            onPress: () => {
+              setPendingSchedule(schedule);
+              setTakenAt(new Date());
+              setShowTimePicker(true);
+            },
+          },
+        ],
+      );
+      return;
+    }
+
+    const actions = schedules.slice(0, 5).map((s) => ({
+      text: `${s.medicationName}${s.dose ? ` (${s.dose})` : ''}`,
+      onPress: () => {
+        setPendingSchedule(s);
+        setTakenAt(new Date());
+        setShowTimePicker(true);
+      },
+    }));
+    actions.push({ text: 'Cancel', style: 'cancel' });
+    Alert.alert('Select medication', 'Which medication was taken?', actions);
+  };
+
   return (
     <Container>
       <TopBar>
@@ -228,6 +308,11 @@ export default function SeizureDiary({ route, navigation }) {
           </PillRow>
 
           <SmallText style={{ marginTop: 6 }}>{prettyDate(selectedDate)}</SmallText>
+
+          <QuickMedBtn onPress={onMarkMedication}>
+            <QuickMedIcon name="pill" />
+            <QuickMedText>Mark medication taken</QuickMedText>
+          </QuickMedBtn>
         </Card>
 
         {loading ? (
@@ -352,6 +437,40 @@ export default function SeizureDiary({ route, navigation }) {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {showTimePicker && (
+        <DateTimePicker
+          value={takenAt}
+          mode="time"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={async (event, selectedDateTime) => {
+            if (Platform.OS !== 'ios') setShowTimePicker(false);
+            if (!selectedDateTime) return;
+            setTakenAt(selectedDateTime);
+
+            if (Platform.OS !== 'ios' && pendingSchedule) {
+              await markTakenForSelectedDate(pendingSchedule.id, selectedDateTime);
+              setPendingSchedule(null);
+            }
+          }}
+        />
+      )}
+
+      {Platform.OS === 'ios' && showTimePicker && (
+        <PickerDoneWrap>
+          <PickerDoneBtn
+            onPress={async () => {
+              setShowTimePicker(false);
+              if (pendingSchedule) {
+                await markTakenForSelectedDate(pendingSchedule.id, takenAt);
+                setPendingSchedule(null);
+              }
+            }}
+          >
+            <PickerDoneText>Done</PickerDoneText>
+          </PickerDoneBtn>
+        </PickerDoneWrap>
+      )}
     </Container>
   );
 }
@@ -615,4 +734,41 @@ const SheetText = styled.Text`
   font-size: 14px;
   font-weight: 900;
   color: #2f2f2f;
+`;
+
+const QuickMedBtn = styled.TouchableOpacity`
+  margin-top: 10px;
+  border-radius: 14px;
+  background-color: #f5efe6;
+  padding: 12px;
+  flex-direction: row;
+  align-items: center;
+`;
+
+const QuickMedIcon = styled(Icon)`
+  font-size: 18px;
+  color: #b03060;
+  margin-right: 8px;
+`;
+
+const QuickMedText = styled.Text`
+  font-size: 13px;
+  font-weight: 800;
+  color: #2f2f2f;
+`;
+
+const PickerDoneWrap = styled.View`
+  padding: 0 20px 16px;
+`;
+
+const PickerDoneBtn = styled.TouchableOpacity`
+  align-self: flex-end;
+  background-color: #b03060;
+  border-radius: 12px;
+  padding: 10px 16px;
+`;
+
+const PickerDoneText = styled.Text`
+  color: #fff;
+  font-weight: 700;
 `;
