@@ -2,9 +2,11 @@ package com.example.demo.controller;
 
 import com.example.demo.model.Child;
 import com.example.demo.model.MedicationLog;
+import com.example.demo.model.MedicationSchedule;
 import com.example.demo.model.User;
 import com.example.demo.repository.ChildRepository;
 import com.example.demo.repository.MedicationLogRepository;
+import com.example.demo.repository.MedicationScheduleRepository;
 import com.example.demo.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -20,14 +22,20 @@ import java.util.List;
 @CrossOrigin(origins = "*")
 public class MedicationLogController {
 
-    @Autowired private UserRepository userRepository;
-    @Autowired private ChildRepository childRepository;
-    @Autowired private MedicationLogRepository medicationLogRepository;
+    @Autowired
+    private UserRepository userRepository;
 
-    // CREATE 
+    @Autowired
+    private ChildRepository childRepository;
+
+    @Autowired
+    private MedicationLogRepository medicationLogRepository;
+
+    @Autowired
+    private MedicationScheduleRepository medicationScheduleRepository;
+
     @PostMapping("/by-user/{userId}")
     public ResponseEntity<?> create(@PathVariable Long userId, @RequestBody CreateMedicationRequest req) {
-
         User user = userRepository.findById(userId).orElse(null);
         if (user == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
 
@@ -40,23 +48,60 @@ public class MedicationLogController {
         MedicationLog log = new MedicationLog();
         log.setChild(child);
 
-        // for now not needed
+        if (req.scheduleId != null) {
+            MedicationSchedule schedule = medicationScheduleRepository.findById(req.scheduleId).orElse(null);
+            if (schedule != null && schedule.getChild().getId().equals(child.getId())) {
+                log.setSchedule(schedule);
+                if (req.medicationName == null || req.medicationName.isBlank()) {
+                    req.medicationName = schedule.getMedicationName();
+                }
+                if (req.dose == null || req.dose.isBlank()) {
+                    req.dose = schedule.getDose();
+                }
+            }
+        }
+
         log.setMedicationName(req.medicationName);
         log.setDose(req.dose);
-
         log.setDate(req.date);
         log.setTaken(req.taken);
-
-        // if they mark taken and provide time, store it
-        // if taken=false and they provide a time (optional), still store it as "logged at"
         log.setTakenAt(req.takenAt);
 
-        MedicationLog saved = medicationLogRepository.save(log);
-        return ResponseEntity.ok(saved);
+        return ResponseEntity.ok(medicationLogRepository.save(log));
     }
 
-    // READ
-    // get all for user, with optional date range filtering
+    @PostMapping("/mark-taken/by-user/{userId}")
+    public ResponseEntity<?> markTaken(@PathVariable Long userId, @RequestBody MarkTakenRequest req) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
+
+        Child child = childRepository.findByUserId(userId).orElse(null);
+        if (child == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("No child linked to this user");
+        if (req.scheduleId == null) return ResponseEntity.badRequest().body("scheduleId is required");
+
+        MedicationSchedule schedule = medicationScheduleRepository.findById(req.scheduleId).orElse(null);
+        if (schedule == null || !schedule.getChild().getId().equals(child.getId())) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Schedule not found for this child");
+        }
+
+        LocalDate date = req.date == null ? LocalDate.now() : req.date;
+        LocalDateTime takenAt = req.takenAt == null ? LocalDateTime.now() : req.takenAt;
+
+        MedicationLog log = medicationLogRepository
+                .findByChildAndDateAndSchedule(child, date, schedule)
+                .orElseGet(MedicationLog::new);
+
+        log.setChild(child);
+        log.setSchedule(schedule);
+        log.setMedicationName(schedule.getMedicationName());
+        log.setDose(schedule.getDose());
+        log.setDate(date);
+        log.setTaken(true);
+        log.setTakenAt(takenAt);
+
+        return ResponseEntity.ok(medicationLogRepository.save(log));
+    }
+
     @GetMapping("/by-user/{userId}")
     public ResponseEntity<?> list(
             @PathVariable Long userId,
@@ -70,15 +115,12 @@ public class MedicationLogController {
         if (child == null) return ResponseEntity.ok(List.of());
 
         if (from != null && to != null) {
-            return ResponseEntity.ok(
-                    medicationLogRepository.findByChildAndDateBetweenOrderByDateDesc(child, from, to)
-            );
+            return ResponseEntity.ok(medicationLogRepository.findByChildAndDateBetweenOrderByDateDesc(child, from, to));
         }
 
         return ResponseEntity.ok(medicationLogRepository.findByChildOrderByDateDesc(child));
     }
 
-    // DELETE
     @DeleteMapping("/{id}")
     public ResponseEntity<?> delete(@PathVariable Long id) {
         if (!medicationLogRepository.existsById(id)) {
@@ -88,18 +130,19 @@ public class MedicationLogController {
         return ResponseEntity.ok("Deleted");
     }
 
-    //DTO 
     public static class CreateMedicationRequest {
-        public String medicationName; // optional for now need to see what i can do with api
-        public String dose;           // optional for now cus same reason as above
-
-        // required
+        public String medicationName;
+        public String dose;
         public LocalDate date;
-
-        // required: true = taken, false = missed
         public Boolean taken;
+        public LocalDateTime takenAt;
+        public Long scheduleId;
+    }
 
-        // optional (lets diary show a time instead of “Logged”)
+    public static class MarkTakenRequest {
+        public Long scheduleId;
+        public LocalDate date;
         public LocalDateTime takenAt;
     }
 }
+
