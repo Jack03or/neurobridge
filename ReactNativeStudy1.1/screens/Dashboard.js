@@ -122,9 +122,22 @@ export default function Dashboard({ route, navigation }) {
   const hasChild = dashboard?.hasChild;
   const age = dashboard?.dob ? calculateAgeFromDob(dashboard.dob) : '-';
 
-  const riskPercent = dashboard?.riskPercent;
-  const riskDisplay =
-    riskPercent == null ? '--%' : `${riskPercent.toString()}%`;
+  const riskLevel = (dashboard?.riskLevel || 'UNKNOWN').toUpperCase();
+
+  const getRiskTone = (level) => {
+    if (level === 'LOW') {
+      return { color: '#2e7d32', message: 'Looking stable today.' };
+    }
+    if (level === 'MEDIUM') {
+      return { color: '#f9a825', message: 'Keep an eye on symptoms.' };
+    }
+    if (level === 'HIGH' || level === 'VERY_HIGH') {
+      return { color: '#c62828', message: 'Higher risk today. Stay alert.' };
+    }
+    return { color: '#6b5e58', message: 'Not enough data yet.' };
+  };
+
+  const riskTone = getRiskTone(riskLevel);
 
   return (
     <Container>
@@ -209,11 +222,13 @@ export default function Dashboard({ route, navigation }) {
                 </DeviceText>
               </DeviceRow>
 
-              <StatusRing>
+              <StatusRing style={{ borderColor: riskTone.color }}>
                 <StatusInner>
                   <StatusLabel>Today</StatusLabel>
-                  <StatusValue>{riskDisplay}</StatusValue>
-                  <StatusHint>(Seizure risk level: add soon)</StatusHint>
+                  <StatusValue style={{ color: riskTone.color }}>
+                    {riskLevel === 'UNKNOWN' ? '--' : riskLevel}
+                  </StatusValue>
+                  <StatusHint>{riskTone.message}</StatusHint>
                 </StatusInner>
               </StatusRing>
 
