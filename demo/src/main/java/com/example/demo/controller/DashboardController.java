@@ -43,7 +43,15 @@ public class DashboardController {
 
     @GetMapping("/by-user/{userId}")
     public ResponseEntity<?> getDashboardForUser(@PathVariable Long userId) {
+        return buildDashboardForUser(userId, false);
+    }
 
+    @PostMapping("/refresh-risk/by-user/{userId}")
+    public ResponseEntity<?> refreshRiskForUser(@PathVariable Long userId) {
+        return buildDashboardForUser(userId, true);
+    }
+
+    private ResponseEntity<?> buildDashboardForUser(Long userId, boolean forceRefreshRisk) {
         User user = userRepository.findById(userId).orElse(null);
         if (user == null) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
@@ -73,7 +81,9 @@ public class DashboardController {
         response.setDisability(child.getDisability());
         response.setDob(child.getDob());
 
-        FitBitMetrics metrics = fitbitService.getOrCreateTodayMetrics(child);
+        FitBitMetrics metrics = forceRefreshRisk
+                ? fitbitService.refreshTodayRisk(child)
+                : fitbitService.getOrCreateTodayMetrics(child);
 
         if (metrics != null) {
             response.setSleepHours(metrics.getSleepHours());

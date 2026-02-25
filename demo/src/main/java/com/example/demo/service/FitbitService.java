@@ -11,4 +11,7 @@ public interface FitbitService {
 
     // save (used after we write risk values)
     FitBitMetrics saveMetrics(FitBitMetrics metrics);
+
+    // force recalculate today's risk
+    FitBitMetrics refreshTodayRisk(Child child);
 }

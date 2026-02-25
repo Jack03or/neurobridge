@@ -2,7 +2,11 @@ package com.example.demo.service;
 
 import com.example.demo.model.Child;
 import com.example.demo.model.FitBitMetrics;
+import com.example.demo.model.MedicationLog;
+import com.example.demo.model.SeizureLog;
 import com.example.demo.repository.FitBitMetricsRepository;
+import com.example.demo.repository.MedicationLogRepository;
+import com.example.demo.repository.SeizureLogRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -10,6 +14,8 @@ import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
@@ -20,8 +26,13 @@ public class FakeFitbitService implements FitbitService {
     @Autowired
     private FitBitMetricsRepository metricsRepository;
 
+    @Autowired
+    private MedicationLogRepository medicationLogRepository;
+
+    @Autowired
+    private SeizureLogRepository seizureLogRepository;
+
     // Python FastAPI base URL (local demo)
-    // If you later ngrok Python too, you can change this to the ngrok URL.
     private static final String PYTHON_BASE_URL = "http://127.0.0.1:8000";
 
     private final RestTemplate restTemplate = new RestTemplate();
@@ -36,7 +47,6 @@ public class FakeFitbitService implements FitbitService {
         if (existing.isPresent()) {
             metrics = existing.get();
         } else {
-            // Create today's fake metrics
             metrics = new FitBitMetrics();
             metrics.setChild(child);
             metrics.setDate(today);
@@ -54,9 +64,9 @@ public class FakeFitbitService implements FitbitService {
             metrics = metricsRepository.save(metrics);
         }
 
-        // ✅ STEP C: calculate/store risk once per day
+        // calculate/store risk once per day
         if (metrics.getRiskCalculatedAt() == null) {
-            applyDailyRiskFromPython(metrics);
+            applyDailyRiskFromPython(metrics, child);
             metrics = metricsRepository.save(metrics);
         }
 
@@ -68,14 +78,25 @@ public class FakeFitbitService implements FitbitService {
         return metricsRepository.save(metrics);
     }
 
-    // ---------------- ML call ----------------
+    @Override
+    public FitBitMetrics refreshTodayRisk(Child child) {
+        FitBitMetrics metrics = getOrCreateTodayMetrics(child);
+        applyDailyRiskFromPython(metrics, child);
+        return metricsRepository.save(metrics);
+    }
 
-    private void applyDailyRiskFromPython(FitBitMetrics metrics) {
+    private void applyDailyRiskFromPython(FitBitMetrics metrics, Child child) {
         try {
-            // NOTE: you don't have seizure + medication tables wired yet
-            // so we send placeholders for now (same as your Postman test).
-            int medicationTaken = 0;
+            LocalDate today = LocalDate.now();
+            List<MedicationLog> todayLogs = medicationLogRepository.findByChildAndDate(child, today);
+            int medicationTaken = todayLogs.stream().anyMatch(MedicationLog::isTaken) ? 1 : 0;
+
+            Optional<SeizureLog> latest = seizureLogRepository.findFirstByChildOrderByTimestampDesc(child);
             int daysSinceSeizure = 30;
+            if (latest.isPresent() && latest.get().getTimestamp() != null) {
+                long days = ChronoUnit.DAYS.between(latest.get().getTimestamp().toLocalDate(), today);
+                daysSinceSeizure = (int) Math.max(days, 0);
+            }
 
             Map<String, Object> payload = Map.of(
                     "sleep_hours", metrics.getSleepHours() == null ? 7.5 : metrics.getSleepHours(),
@@ -87,7 +108,6 @@ public class FakeFitbitService implements FitbitService {
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
 
             ResponseEntity<Map> response = restTemplate.exchange(
@@ -104,10 +124,9 @@ public class FakeFitbitService implements FitbitService {
                 Integer riskPercent = safeInt(riskPercentObj);
                 String riskLevel = riskLevelObj == null ? "UNKNOWN" : riskLevelObj.toString();
 
-                // clamp safety
                 if (riskPercent != null) {
-                    if (riskPercent < 1) riskPercent = 1;     // never show 0% (looks weird)
-                    if (riskPercent > 95) riskPercent = 95;   // never show 100% (too absolute)
+                    if (riskPercent < 1) riskPercent = 1;
+                    if (riskPercent > 95) riskPercent = 95;
                 }
 
                 metrics.setRiskPercent(riskPercent);
@@ -116,21 +135,18 @@ public class FakeFitbitService implements FitbitService {
                 return;
             }
 
-            // fallback if python gave unexpected output
             applyFallbackHeuristic(metrics);
 
         } catch (Exception ex) {
-            // if python is offline or errors, fallback so app still works
             applyFallbackHeuristic(metrics);
         }
     }
 
-    // simple fallback (only used if python is down)
     private void applyFallbackHeuristic(FitBitMetrics metrics) {
         int risk = 10;
 
         if (metrics.getSleepHours() != null && metrics.getSleepHours() < 7.0) risk += 20;
-        if (metrics.getHrv() != null && metrics.getHrv() < 40.0) risk += 15; // ✅ lower HRV = worse
+        if (metrics.getHrv() != null && metrics.getHrv() < 40.0) risk += 15;
         if (metrics.getLatestHeartRate() != null && metrics.getLatestHeartRate() > 100) risk += 10;
 
         if (risk < 1) risk = 1;
@@ -145,8 +161,6 @@ public class FakeFitbitService implements FitbitService {
         metrics.setRiskLevel(level);
         metrics.setRiskCalculatedAt(LocalDateTime.now());
     }
-
-    // ---------------- helpers ----------------
 
     private Integer safeInt(Object value) {
         if (value == null) return null;
@@ -171,3 +185,4 @@ public class FakeFitbitService implements FitbitService {
         return Math.round(value * 10.0) / 10.0;
     }
 }
+

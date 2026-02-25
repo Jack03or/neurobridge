@@ -1,6 +1,6 @@
 // screens/Dashboard.js
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StatusBar, Alert, ScrollView, Platform, Modal, Pressable } from 'react-native';
+import { ActivityIndicator, StatusBar, Alert, ScrollView, Platform, Modal, Pressable, SafeAreaView } from 'react-native';
 import styled from 'styled-components/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -15,6 +15,7 @@ export default function Dashboard({ route, navigation }) {
   const [takenAt, setTakenAt] = useState(new Date());
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showMedicationModal, setShowMedicationModal] = useState(false);
+  const [refreshingRisk, setRefreshingRisk] = useState(false);
 
   const fetchDashboard = async () => {
     try {
@@ -80,10 +81,31 @@ export default function Dashboard({ route, navigation }) {
         Alert.alert('Error', text || 'Could not mark medication taken.');
         return;
       }
-      await fetchDashboard();
+      await refreshRisk(true);
       Alert.alert('Saved', 'Medication marked as taken.');
     } catch (err) {
       Alert.alert('Error', 'Could not mark medication taken.');
+    }
+  };
+
+  const refreshRisk = async (silent = false) => {
+    try {
+      setRefreshingRisk(true);
+      const response = await fetch(`${BASE_URL}/api/dashboard/refresh-risk/by-user/${userId}`, {
+        method: 'POST',
+      });
+      const text = await response.text();
+      if (!response.ok) {
+        if (!silent) Alert.alert('Error', text || 'Could not refresh risk.');
+        return;
+      }
+      const data = text ? JSON.parse(text) : null;
+      if (data) setDashboard(data);
+      if (!silent) Alert.alert('Updated', 'Risk refreshed.');
+    } catch (err) {
+      if (!silent) Alert.alert('Error', 'Could not refresh risk.');
+    } finally {
+      setRefreshingRisk(false);
     }
   };
 
@@ -142,6 +164,7 @@ export default function Dashboard({ route, navigation }) {
   return (
     <Container>
       <StatusBar barStyle="light-content" />
+      <SafeTop />
 
       <TopBar>
         {/* put onPress back for settings */}
@@ -150,7 +173,9 @@ export default function Dashboard({ route, navigation }) {
         </SettingsButton>
 
         <TopTitle>Neurobridge</TopTitle>
-        <TopSpacer />
+        <SettingsButton onPress={() => refreshRisk(false)} disabled={refreshingRisk}>
+          <TopIcon name={refreshingRisk ? 'loading' : 'refresh'} />
+        </SettingsButton>
       </TopBar>
 
       <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 40 }}>
@@ -421,10 +446,14 @@ const Container = styled.View`
   background-color: #f5efe6;
 `;
 
+const SafeTop = styled(SafeAreaView)`
+  background-color: #f5efe6;
+`;
+
 const TopBar = styled.View`
   height: 56px;
   background-color: #b03060;
-  margin: 16px 24px 8px;
+  margin: 8px 24px 8px;
   border-radius: 18px;
   padding: 0 16px;
   flex-direction: row;
@@ -451,10 +480,6 @@ const TopTitle = styled.Text`
   font-size: 18px;
   font-weight: 700;
   color: #ffffff;
-`;
-
-const TopSpacer = styled.View`
-  width: 28px;
 `;
 
 const ChildCard = styled.View`
