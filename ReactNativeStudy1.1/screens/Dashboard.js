@@ -17,6 +17,19 @@ export default function Dashboard({ route, navigation }) {
   const [showMedicationModal, setShowMedicationModal] = useState(false);
   const [refreshingRisk, setRefreshingRisk] = useState(false);
 
+  const maybeShowMedicationReminder = (data) => {
+    if (!data?.hasChild || data?.medicationTakenToday) return;
+
+    Alert.alert(
+      'Medication reminder',
+      'Medication has not been marked as taken today.',
+      [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'Mark as taken', onPress: handleMedicationTap },
+      ]
+    );
+  };
+
   const fetchDashboard = async () => {
     try {
       const response = await fetch(
@@ -38,6 +51,7 @@ export default function Dashboard({ route, navigation }) {
       }
 
       setDashboard(data);
+      maybeShowMedicationReminder(data);
     } catch (err) {
       Alert.alert('Error', 'Could not load dashboard information.');
     } finally {
@@ -100,7 +114,10 @@ export default function Dashboard({ route, navigation }) {
         return;
       }
       const data = text ? JSON.parse(text) : null;
-      if (data) setDashboard(data);
+      if (data) {
+        setDashboard(data);
+        maybeShowMedicationReminder(data);
+      }
       if (!silent) Alert.alert('Updated', 'Risk refreshed.');
     } catch (err) {
       if (!silent) Alert.alert('Error', 'Could not refresh risk.');
