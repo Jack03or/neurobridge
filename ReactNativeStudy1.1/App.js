@@ -2,6 +2,8 @@
 import * as React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 import HomeScreen from './screens/Home';
 import SignUpScreen from './screens/SignUp';
@@ -24,9 +26,63 @@ import GenerateReport from './screens/GenerateReport';
 import SavedReports from './screens/SavedReports';
 import ReportPreview from './screens/ReportPreview';
 
-
-
 const Stack = createNativeStackNavigator();
+const Tab = createBottomTabNavigator();
+
+function MainTabs({ route }) {
+  const userId = route?.params?.userId;
+
+  return (
+    <Tab.Navigator
+      initialRouteName="Dashboard"
+      screenOptions={({ route: tabRoute }) => ({
+        headerShown: false,
+        tabBarActiveTintColor: '#B03060',
+        tabBarInactiveTintColor: '#8b7e76',
+        tabBarStyle: {
+          height: 62,
+          paddingTop: 6,
+          paddingBottom: 8,
+        },
+        tabBarIcon: ({ color, size }) => {
+          const iconMap = {
+            SeizureDiary: 'calendar-month-outline',
+            Dashboard: 'view-dashboard-outline',
+            LogSeizureSymptoms: 'plus-circle-outline',
+            GenerateReport: 'file-document-outline',
+          };
+
+          return <Icon name={iconMap[tabRoute.name] || 'circle-outline'} color={color} size={size} />;
+        },
+      })}
+    >
+      <Tab.Screen
+        name="SeizureDiary"
+        component={SeizureDiary}
+        initialParams={{ userId }}
+        options={{ title: 'Diary' }}
+      />
+      <Tab.Screen
+        name="Dashboard"
+        component={Dashboard}
+        initialParams={{ userId }}
+        options={{ title: 'Dashboard' }}
+      />
+      <Tab.Screen
+        name="LogSeizureSymptoms"
+        component={LogSeizureSymptoms}
+        initialParams={{ userId }}
+        options={{ title: 'Log Seizure' }}
+      />
+      <Tab.Screen
+        name="GenerateReport"
+        component={GenerateReport}
+        initialParams={{ userId }}
+        options={{ title: 'Reports' }}
+      />
+    </Tab.Navigator>
+  );
+}
 
 export default function App() {
   return (
@@ -39,26 +95,21 @@ export default function App() {
         <Stack.Screen name="SignUp" component={SignUpScreen} />
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="AddChild" component={AddChild} />
-        <Stack.Screen name="Dashboard" component={Dashboard} />
+        <Stack.Screen name="MainTabs" component={MainTabs} />
 
         {/* Log Seizure */}
-        <Stack.Screen name="LogSeizureSymptoms" component={LogSeizureSymptoms} />
         <Stack.Screen name="LogSeizureDetails" component={LogSeizureDetails} />
         <Stack.Screen name="SeizureSummary" component={SeizureSummary} />
 
         {/* Seizure Diary */}
-        <Stack.Screen name="SeizureDiary" component={SeizureDiary} />
         <Stack.Screen name="LogMedicationEvent" component={LogMedicationEvent} />
         <Stack.Screen name="DiaryEventView" component={DiaryEventView} />
         <Stack.Screen name="SeizureEventView" component={SeizureEventView} />
         <Stack.Screen name="LogAppointmentEvent" component={LogAppointmentEvent} />
 
         {/* Reports */}
-        <Stack.Screen name="GenerateReport" component={GenerateReport} />
         <Stack.Screen name="SavedReports" component={SavedReports} />
         <Stack.Screen name="ReportPreview" component={ReportPreview} />
-
-
       </Stack.Navigator>
     </NavigationContainer>
   );

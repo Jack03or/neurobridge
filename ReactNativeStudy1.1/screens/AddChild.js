@@ -169,7 +169,7 @@ export default function AddChild({ route, navigation }) {
 
         Alert.alert('Success', 'Child added successfully!');
         // Go to dashboard and show the child card
-        navigation.navigate('Dashboard', { userId });
+        navigation.navigate('MainTabs', { userId, screen: 'Dashboard' });
       } else {
         Alert.alert('Error', result);
       }

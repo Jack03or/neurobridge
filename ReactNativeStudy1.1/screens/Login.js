@@ -38,8 +38,10 @@ export default function LoginScreen({ navigation }) {
 
         if (user && user.id) {
           Alert.alert('Success', 'Login successful!');
-          //navigate to Dashboard, passing userId
-          navigation.navigate('Dashboard', { userId: user.id });
+          navigation.navigate('MainTabs', {
+            userId: user.id,
+            screen: 'Dashboard',
+          });
         } else {
           Alert.alert('Error', 'User data missing from server response.');
         }

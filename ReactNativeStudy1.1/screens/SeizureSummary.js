@@ -39,7 +39,10 @@ export default function SeizureSummary({ route, navigation }) {
       }
 
       Alert.alert('Saved', 'Seizure entry added.');
-      navigation.navigate('Dashboard', { userId: payload.userId });
+      navigation.navigate('MainTabs', {
+        userId: payload.userId,
+        screen: 'Dashboard',
+      });
     } catch (e) {
       console.error(e);
       Alert.alert('Error', 'Failed to save seizure log.');
