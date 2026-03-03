@@ -11,14 +11,19 @@ import com.example.demo.repository.SeizureLogRepository;
 import com.example.demo.repository.UserRepository;
 import com.example.demo.service.FitbitService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @RestController
@@ -41,6 +46,9 @@ public class DashboardController {
     @Autowired
     private MedicationLogRepository medicationLogRepository;
 
+    @Value("${ml.base-url:http://127.0.0.1:8000}")
+    private String mlBaseUrl;
+
     @GetMapping("/by-user/{userId}")
     public ResponseEntity<?> getDashboardForUser(@PathVariable Long userId) {
         return buildDashboardForUser(userId, false);
@@ -49,6 +57,23 @@ public class DashboardController {
     @PostMapping("/refresh-risk/by-user/{userId}")
     public ResponseEntity<?> refreshRiskForUser(@PathVariable Long userId) {
         return buildDashboardForUser(userId, true);
+    }
+
+    @GetMapping("/insights/by-user/{userId}")
+    public ResponseEntity<?> getInsightsForUser(@PathVariable Long userId) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
+        }
+
+        List<String> insights = fetchMlInsights();
+        if (insights.isEmpty()) {
+            insights = List.of("Not enough data yet to show smart insights.");
+        }
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("insights", insights);
+        return ResponseEntity.ok(response);
     }
 
     private ResponseEntity<?> buildDashboardForUser(Long userId, boolean forceRefreshRisk) {
@@ -144,6 +169,26 @@ public class DashboardController {
         } else {
             response.setLastSeizureText(daysAgo + " days ago");
         }
+    }
+
+    private List<String> fetchMlInsights() {
+        try {
+            RestTemplate restTemplate = new RestTemplate();
+            Map response = restTemplate.getForObject(mlBaseUrl + "/insights", Map.class);
+            if (response == null || !response.containsKey("insights")) {
+                return List.of();
+            }
+            Object raw = response.get("insights");
+            if (raw instanceof List<?> list) {
+                List<String> out = new ArrayList<>();
+                for (Object item : list) {
+                    out.add(String.valueOf(item));
+                }
+                return out;
+            }
+        } catch (Exception ignored) {
+        }
+        return List.of();
     }
 
     // DTO for dashboard response

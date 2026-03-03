@@ -9,6 +9,7 @@ import { BASE_URL } from '../config';
 export default function Dashboard({ route, navigation }) {
   const { userId } = route.params;
   const [dashboard, setDashboard] = useState(null);
+  const [insights, setInsights] = useState([]);
   const [loading, setLoading] = useState(true);
   const [schedules, setSchedules] = useState([]);
   const [pendingSchedule, setPendingSchedule] = useState(null);
@@ -70,9 +71,25 @@ export default function Dashboard({ route, navigation }) {
     }
   };
 
+  const fetchInsights = async () => {
+    try {
+      const response = await fetch(`${BASE_URL}/api/dashboard/insights/by-user/${userId}`);
+      const text = await response.text();
+      if (!response.ok) {
+        setInsights([]);
+        return;
+      }
+      const data = text ? JSON.parse(text) : {};
+      setInsights(Array.isArray(data.insights) ? data.insights.slice(0, 3) : []);
+    } catch (err) {
+      setInsights([]);
+    }
+  };
+
   useEffect(() => {
     fetchDashboard();
     fetchSchedules();
+    fetchInsights();
   }, [userId]);
 
   const toIsoLocal = (d) => {
@@ -118,6 +135,7 @@ export default function Dashboard({ route, navigation }) {
         setDashboard(data);
         maybeShowMedicationReminder(data);
       }
+      await fetchInsights();
       if (!silent) Alert.alert('Updated', 'Risk refreshed.');
     } catch (err) {
       if (!silent) Alert.alert('Error', 'Could not refresh risk.');
@@ -177,6 +195,20 @@ export default function Dashboard({ route, navigation }) {
   };
 
   const riskTone = getRiskTone(riskLevel);
+
+  const getInsightCardMeta = (text) => {
+    const lower = (text || '').toLowerCase();
+    if (lower.includes('afternoon') || lower.includes('morning') || lower.includes('evening') || lower.includes('night')) {
+      return { title: 'Timing Pattern', icon: 'clock-outline' };
+    }
+    if (lower.includes('mon') || lower.includes('tue') || lower.includes('wed') || lower.includes('thu') || lower.includes('fri') || lower.includes('sat') || lower.includes('sun')) {
+      return { title: 'Weekly Pattern', icon: 'calendar-week' };
+    }
+    if (lower.includes('streak')) {
+      return { title: 'Trend Pattern', icon: 'chart-line' };
+    }
+    return { title: 'Smart Insight', icon: 'lightbulb-on-outline' };
+  };
 
   return (
     <Container>
@@ -312,31 +344,25 @@ export default function Dashboard({ route, navigation }) {
           )}
         </ChildCard>
 
-        <ActionsContainer>
-          <ActionTile
-            onPress={() => navigation.navigate('LogSeizureSymptoms', { userId })}
-          >
-            <ActionIcon name="pulse" />
-            <ActionText>Log Seizure</ActionText>
-          </ActionTile>
-
-          <ActionTile
-            onPress={() => navigation.navigate('GenerateReport', { userId })}
-          >
-            <ActionIcon name="file-chart" />
-            <ActionText>Generate Report</ActionText>
-          </ActionTile>
-
-          <ActionTile onPress={() => navigation.navigate('SeizureDiary', { userId })}>
-          <ActionIcon name="calendar-text" />
-          <ActionText>Seizure Diary</ActionText>
-          </ActionTile>
-
-          <ActionTileDisabled>
-            <ActionIcon name="lightbulb-on-outline" />
-            <ActionText>Next featue placeholder</ActionText>
-          </ActionTileDisabled>
-        </ActionsContainer>
+        <InsightsSection>
+          <InsightsHeader>Epilepsy Insights</InsightsHeader>
+          <InsightsGrid>
+            {(insights.length ? insights : ['Not enough data yet to show smart insights.'])
+              .slice(0, 3)
+              .map((item, idx) => {
+                const meta = getInsightCardMeta(item);
+                return (
+                  <InsightCard key={`${meta.title}-${idx}`} full={idx === 2 && (insights.length || 1) % 2 === 1}>
+                    <InsightTopRow>
+                      <InsightIcon name={meta.icon} />
+                      <InsightTitle>{meta.title}</InsightTitle>
+                    </InsightTopRow>
+                    <InsightText>{item}</InsightText>
+                  </InsightCard>
+                );
+              })}
+          </InsightsGrid>
+        </InsightsSection>
       </ScrollView>
 
       {showMedicationModal && (
@@ -699,6 +725,58 @@ const EmptyButtonText = styled.Text`
   color: #ffffff;
   font-size: 14px;
   font-weight: 600;
+`;
+
+const InsightsSection = styled.View`
+  margin-top: 2px;
+`;
+
+const InsightsHeader = styled.Text`
+  font-size: 18px;
+  font-weight: 700;
+  color: #2f2f2f;
+  margin-bottom: 12px;
+`;
+
+const InsightsGrid = styled.View`
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: space-between;
+`;
+
+const InsightCard = styled.View`
+  width: ${(p) => (p.full ? '100%' : '48%')};
+  min-height: 130px;
+  border-radius: 18px;
+  background-color: #ffffff;
+  padding: 12px;
+  margin-bottom: 12px;
+  border-width: 1px;
+  border-color: #ead9df;
+`;
+
+const InsightTopRow = styled.View`
+  flex-direction: row;
+  align-items: center;
+`;
+
+const InsightIcon = styled(Icon)`
+  font-size: 18px;
+  color: #b03060;
+  margin-right: 6px;
+`;
+
+const InsightTitle = styled.Text`
+  font-size: 13px;
+  font-weight: 700;
+  color: #2f2f2f;
+`;
+
+const InsightText = styled.Text`
+  margin-top: 10px;
+  font-size: 12px;
+  color: #5f544f;
+  line-height: 17px;
 `;
 
 const ActionsContainer = styled.View`
