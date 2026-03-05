@@ -578,6 +578,19 @@ def compute_insights(events: pd.DataFrame) -> dict:
     return summary
 
 
+def compute_insights_by_child(events: pd.DataFrame) -> dict:
+    by_child = {}
+    if events.empty:
+        return {"by_child": by_child}
+
+    for child_id, child_events in events.groupby("child_id"):
+        if pd.isna(child_id):
+            continue
+        by_child[str(int(child_id))] = compute_insights(child_events.copy())
+
+    return {"by_child": by_child}
+
+
 def main() -> None:
     print("Loading data from MySQL...")
     seizure_df, meds_df, fitbit_df, schedules_df = load_tables()
@@ -588,14 +601,17 @@ def main() -> None:
     out_model = Path("model.joblib")
     out_metrics = Path("metrics.json")
     out_insights = Path("insights.json")
+    out_insights_by_child = Path("insights_by_child.json")
 
     print("Training model...")
     train_model(events, out_model, out_metrics)
     out_insights.write_text(json.dumps(compute_insights(events), indent=2))
+    out_insights_by_child.write_text(json.dumps(compute_insights_by_child(events), indent=2))
 
     print(f"Saved model -> {out_model.resolve()}")
     print(f"Saved metrics -> {out_metrics.resolve()}")
     print(f"Saved insights -> {out_insights.resolve()}")
+    print(f"Saved child insights -> {out_insights_by_child.resolve()}")
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.util.UriComponentsBuilder;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDate;
@@ -66,7 +67,14 @@ public class DashboardController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
         }
 
-        List<String> insights = fetchMlInsights();
+        Child child = childRepository.findByUserId(userId).orElse(null);
+        if (child == null) {
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("insights", List.of("Not enough data yet to show smart insights."));
+            return ResponseEntity.ok(response);
+        }
+
+        List<String> insights = fetchMlInsights(child.getId());
         if (insights.isEmpty()) {
             insights = List.of("Not enough data yet to show smart insights.");
         }
@@ -171,10 +179,13 @@ public class DashboardController {
         }
     }
 
-    private List<String> fetchMlInsights() {
+    private List<String> fetchMlInsights(Long childId) {
         try {
             RestTemplate restTemplate = new RestTemplate();
-            Map response = restTemplate.getForObject(mlBaseUrl + "/insights", Map.class);
+            String url = UriComponentsBuilder.fromHttpUrl(mlBaseUrl + "/insights")
+                    .queryParam("childId", childId)
+                    .toUriString();
+            Map response = restTemplate.getForObject(url, Map.class);
             if (response == null || !response.containsKey("insights")) {
                 return List.of();
             }

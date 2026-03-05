@@ -1,22 +1,24 @@
 # app.py 
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 import joblib
 import numpy as np
 import os
 import json
+from typing import Optional
 
 app = FastAPI()
 
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "model.joblib")
 METRICS_PATH = os.path.join(os.path.dirname(__file__), "metrics.json")
 INSIGHTS_PATH = os.path.join(os.path.dirname(__file__), "insights.json")
+INSIGHTS_BY_CHILD_PATH = os.path.join(os.path.dirname(__file__), "insights_by_child.json")
 
 model = None
 model_loaded = False
 
-# ---- Request schema (matches what you send from Postman / Java) ----
+# ---- Request schema for prediction endpoint ----
 class PredictRequest(BaseModel):
     sleep_hours: float = Field(..., ge=0, le=24)
     latest_heart_rate: int = Field(..., ge=30, le=220)
@@ -39,7 +41,22 @@ def health():
     return {"status": "ok", "model_loaded": model_loaded}
 
 @app.get("/insights")
-def insights():
+def insights(childId: Optional[int] = Query(default=None)):
+    if childId is not None:
+        if not os.path.exists(INSIGHTS_BY_CHILD_PATH):
+            raise HTTPException(status_code=404, detail="Child insights not found. Train first.")
+        try:
+            with open(INSIGHTS_BY_CHILD_PATH, "r") as f:
+                data = json.load(f)
+            by_child = data.get("by_child", {})
+            child_data = by_child.get(str(childId))
+            if child_data is None:
+                return {"child_id": childId, "insights": []}
+            child_data["child_id"] = childId
+            return child_data
+        except Exception:
+            raise HTTPException(status_code=500, detail="Failed to load child insights")
+
     if not os.path.exists(INSIGHTS_PATH):
         raise HTTPException(status_code=404, detail="Insights not found. Train first.")
     try:
@@ -48,7 +65,7 @@ def insights():
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to load insights")
 
-# ---- Helper: clamp + avoid 0%/100% medical-style certainty ----
+# ---- Helper: clamp to avoid 0%/100% medical-style certainty ----
 def safe_probability(p: float) -> float:
     """
     Convert model probability into a safer risk estimate:
@@ -58,7 +75,7 @@ def safe_probability(p: float) -> float:
     p = float(np.clip(p, 0.0, 1.0))
 
     # confidence compression: pulls very high/low probs towards the center a bit
-    # (simple and explainable; helps avoid 0/100 even if model is overconfident)
+    # To help avoid 0/100 even if model is overconfident/ certain
     p = 0.5 + 0.8 * (p - 0.5)   # 0.8 is "temperature-like" smoothing
 
     # clamp to 5%..95%
@@ -66,7 +83,7 @@ def safe_probability(p: float) -> float:
     return p
 
 def risk_level_from_percent(risk_percent: int) -> str:
-    # simple bands you can justify in a report
+    # risk levels based on percent thresholds 
     if risk_percent < 20:
         return "LOW"
     elif risk_percent < 50:
@@ -101,6 +118,6 @@ def predict(req: PredictRequest):
         "risk_percent": risk_percent,
         "risk_level": level,
         "model_loaded": True,
-        # optional for debugging/reporting (you can remove later)
+        # optional for debugging
         "raw_model_probability": float(proba)
     }

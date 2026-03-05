@@ -159,7 +159,7 @@ public class ReportService {
         data.seizureTimeline = buildSeizureTimeline(seizures);
         data.medSummary = buildMedicationSummary(meds);
         data.fitbitSummary = buildFitbitSummary(metrics);
-        data.insights = buildInsights(seizures, meds, metrics, startDate, endDate);
+        data.insights = buildInsights(child, seizures, meds, metrics, startDate, endDate);
         data.appointments = buildAppointments(appointmentsInRange, upcoming);
 
         data.heatmapChart = buildHeatmapChart(seizures);
@@ -361,9 +361,9 @@ public class ReportService {
         return summary;
     }
 
-    private List<String> buildInsights(List<SeizureLog> seizures, List<MedicationLog> meds, List<FitBitMetrics> metrics,
+    private List<String> buildInsights(Child child, List<SeizureLog> seizures, List<MedicationLog> meds, List<FitBitMetrics> metrics,
                                        LocalDate startDate, LocalDate endDate) {
-        List<String> mlInsights = fetchMlInsights();
+        List<String> mlInsights = fetchMlInsights(child.getId());
         if (!mlInsights.isEmpty()) {
             return mlInsights;
         }
@@ -413,10 +413,10 @@ public class ReportService {
         return insights;
     }
 
-    private List<String> fetchMlInsights() {
+    private List<String> fetchMlInsights(Long childId) {
         try {
             RestTemplate restTemplate = new RestTemplate();
-            Map response = restTemplate.getForObject(mlBaseUrl + "/insights", Map.class);
+            Map response = restTemplate.getForObject(mlBaseUrl + "/insights?childId=" + childId, Map.class);
             if (response == null || !response.containsKey("insights")) {
                 return List.of();
             }
