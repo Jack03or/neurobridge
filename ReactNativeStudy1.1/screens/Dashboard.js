@@ -5,11 +5,18 @@ import styled from 'styled-components/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { BASE_URL } from '../config';
+import InsightTrendLine from '../components/charts/InsightTrendLine';
+import InsightTimingPie from '../components/charts/InsightTimingPie';
 
 export default function Dashboard({ route, navigation }) {
   const { userId } = route.params;
   const [dashboard, setDashboard] = useState(null);
   const [insights, setInsights] = useState([]);
+  const [charts, setCharts] = useState({
+    trendSeries: { labels: [], values: [] },
+    medicationSplit: { labels: [], values: [] },
+    timingSplit: { labels: [], values: [] },
+  });
   const [loading, setLoading] = useState(true);
   const [schedules, setSchedules] = useState([]);
   const [pendingSchedule, setPendingSchedule] = useState(null);
@@ -77,12 +84,27 @@ export default function Dashboard({ route, navigation }) {
       const text = await response.text();
       if (!response.ok) {
         setInsights([]);
+        setCharts({
+          trendSeries: { labels: [], values: [] },
+          medicationSplit: { labels: [], values: [] },
+          timingSplit: { labels: [], values: [] },
+        });
         return;
       }
       const data = text ? JSON.parse(text) : {};
       setInsights(Array.isArray(data.insights) ? data.insights.slice(0, 3) : []);
+      setCharts(data.charts || {
+        trendSeries: { labels: [], values: [] },
+        medicationSplit: { labels: [], values: [] },
+        timingSplit: { labels: [], values: [] },
+      });
     } catch (err) {
       setInsights([]);
+      setCharts({
+        trendSeries: { labels: [], values: [] },
+        medicationSplit: { labels: [], values: [] },
+        timingSplit: { labels: [], values: [] },
+      });
     }
   };
 
@@ -196,19 +218,26 @@ export default function Dashboard({ route, navigation }) {
 
   const riskTone = getRiskTone(riskLevel);
 
-  const getInsightCardMeta = (text) => {
-    const lower = (text || '').toLowerCase();
-    if (lower.includes('afternoon') || lower.includes('morning') || lower.includes('evening') || lower.includes('night')) {
-      return { title: 'Timing Pattern', icon: 'clock-outline' };
-    }
-    if (lower.includes('mon') || lower.includes('tue') || lower.includes('wed') || lower.includes('thu') || lower.includes('fri') || lower.includes('sat') || lower.includes('sun')) {
-      return { title: 'Weekly Pattern', icon: 'calendar-week' };
-    }
-    if (lower.includes('streak')) {
-      return { title: 'Trend Pattern', icon: 'chart-line' };
-    }
-    return { title: 'Smart Insight', icon: 'lightbulb-on-outline' };
+  const findInsight = (matcher) => {
+    return insights.find((item) => matcher((item || '').toLowerCase())) || 'Not enough data yet.';
   };
+
+  const timingInsight = findInsight((txt) =>
+    txt.includes('morning') || txt.includes('afternoon') || txt.includes('evening') || txt.includes('night')
+  );
+  const weeklyInsight = findInsight((txt) =>
+    txt.includes('mon') || txt.includes('tue') || txt.includes('wed') || txt.includes('thu') || txt.includes('fri') || txt.includes('sat') || txt.includes('sun')
+  );
+  const trendLabels = Array.isArray(charts?.trendSeries?.labels) ? charts.trendSeries.labels : [];
+  const trendValues = Array.isArray(charts?.trendSeries?.values) ? charts.trendSeries.values.map((v) => Number(v || 0)) : [];
+  const trendTotal = trendValues.reduce((sum, value) => sum + value, 0);
+  const trendMax = trendValues.length ? Math.max(...trendValues) : 0;
+  const topDays = trendLabels.filter((_, idx) => trendValues[idx] === trendMax && trendMax > 0);
+  const trendSummary = trendTotal === 0
+    ? 'No seizures logged in the last 7 days.'
+    : topDays.length > 1
+      ? `${trendTotal} seizures in the last 7 days. Highest days: ${topDays.join(', ')} (${trendMax}).`
+      : `${trendTotal} seizures in the last 7 days. Highest day: ${topDays[0]} (${trendMax}).`;
 
   return (
     <Container>
@@ -346,22 +375,23 @@ export default function Dashboard({ route, navigation }) {
 
         <InsightsSection>
           <InsightsHeader>Epilepsy Insights</InsightsHeader>
-          <InsightsGrid>
-            {(insights.length ? insights : ['Not enough data yet to show smart insights.'])
-              .slice(0, 3)
-              .map((item, idx) => {
-                const meta = getInsightCardMeta(item);
-                return (
-                  <InsightCard key={`${meta.title}-${idx}`} full={idx === 2 && (insights.length || 1) % 2 === 1}>
-                    <InsightTopRow>
-                      <InsightIcon name={meta.icon} />
-                      <InsightTitle>{meta.title}</InsightTitle>
-                    </InsightTopRow>
-                    <InsightText>{item}</InsightText>
-                  </InsightCard>
-                );
-              })}
-          </InsightsGrid>
+          <InsightCard full>
+            <InsightTopRow>
+              <InsightIcon name="chart-line" />
+              <InsightTitle>Trend Pattern</InsightTitle>
+            </InsightTopRow>
+            <InsightTrendLine data={charts.trendSeries} />
+            <InsightText>{trendSummary}</InsightText>
+          </InsightCard>
+
+          <InsightCard full>
+            <InsightTopRow>
+              <InsightIcon name="clock-outline" />
+              <InsightTitle>Timing Pattern</InsightTitle>
+            </InsightTopRow>
+            <InsightTimingPie data={charts.timingSplit} />
+            <InsightText>{timingInsight === 'Not enough data yet.' ? weeklyInsight : timingInsight}</InsightText>
+          </InsightCard>
         </InsightsSection>
       </ScrollView>
 
@@ -738,15 +768,9 @@ const InsightsHeader = styled.Text`
   margin-bottom: 12px;
 `;
 
-const InsightsGrid = styled.View`
-  flex-direction: row;
-  flex-wrap: wrap;
-  justify-content: space-between;
-`;
-
 const InsightCard = styled.View`
   width: ${(p) => (p.full ? '100%' : '48%')};
-  min-height: 130px;
+  min-height: 250px;
   border-radius: 18px;
   background-color: #ffffff;
   padding: 12px;

@@ -22,10 +22,13 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/dashboard")
@@ -81,6 +84,7 @@ public class DashboardController {
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("insights", insights);
+        response.put("charts", buildChartData(child));
         return ResponseEntity.ok(response);
     }
 
@@ -200,6 +204,83 @@ public class DashboardController {
         } catch (Exception ignored) {
         }
         return List.of();
+    }
+
+    private Map<String, Object> buildChartData(Child child) {
+        Map<String, Object> charts = new LinkedHashMap<>();
+
+        LocalDate today = LocalDate.now();
+        LocalDate trendStart = today.minusDays(6);
+
+        List<String> trendLabels = new ArrayList<>();
+        List<Integer> trendValues = new ArrayList<>();
+
+        LocalDateTime seizureWindowStart = trendStart.atStartOfDay();
+        List<SeizureLog> recentSeizures = seizureLogRepository.findByChildAndTimestampBetween(
+                child, seizureWindowStart, LocalDateTime.now()
+        );
+
+        Map<LocalDate, Long> trendByDate = recentSeizures.stream()
+                .filter(s -> s.getTimestamp() != null)
+                .collect(Collectors.groupingBy(s -> s.getTimestamp().toLocalDate(), Collectors.counting()));
+
+        for (int i = 0; i < 7; i++) {
+            LocalDate day = trendStart.plusDays(i);
+            trendLabels.add(day.getDayOfWeek().name().substring(0, 3));
+            trendValues.add(trendByDate.getOrDefault(day, 0L).intValue());
+        }
+
+        Map<String, Object> trendSeries = new LinkedHashMap<>();
+        trendSeries.put("labels", trendLabels);
+        trendSeries.put("values", trendValues);
+        charts.put("trendSeries", trendSeries);
+
+        List<SeizureLog> allSeizures = seizureLogRepository.findByChildOrderByTimestampDesc(child);
+        Map<String, Integer> timingBuckets = new LinkedHashMap<>();
+        timingBuckets.put("Morning", 0);
+        timingBuckets.put("Afternoon", 0);
+        timingBuckets.put("Evening", 0);
+        timingBuckets.put("Night", 0);
+
+        for (SeizureLog seizure : allSeizures) {
+            if (seizure.getTimestamp() == null) continue;
+            int hour = seizure.getTimestamp().getHour();
+            if (hour <= 5) timingBuckets.computeIfPresent("Night", (k, v) -> v + 1);
+            else if (hour <= 11) timingBuckets.computeIfPresent("Morning", (k, v) -> v + 1);
+            else if (hour <= 17) timingBuckets.computeIfPresent("Afternoon", (k, v) -> v + 1);
+            else timingBuckets.computeIfPresent("Evening", (k, v) -> v + 1);
+        }
+
+        Map<String, Object> timingSplit = new LinkedHashMap<>();
+        timingSplit.put("labels", new ArrayList<>(timingBuckets.keySet()));
+        timingSplit.put("values", new ArrayList<>(timingBuckets.values()));
+        charts.put("timingSplit", timingSplit);
+
+        int taken = 0;
+        int missed = 0;
+        Map<LocalDate, List<MedicationLog>> medsByDate = medicationLogRepository
+                .findByChildOrderByDateDesc(child)
+                .stream()
+                .collect(Collectors.groupingBy(MedicationLog::getDate, HashMap::new, Collectors.toList()));
+
+        for (SeizureLog seizure : allSeizures) {
+            if (seizure.getTimestamp() == null) continue;
+            LocalDate day = seizure.getTimestamp().toLocalDate();
+            List<MedicationLog> dayLogs = medsByDate.getOrDefault(day, List.of());
+
+            boolean anyTaken = dayLogs.stream().anyMatch(MedicationLog::isTaken);
+            boolean anyMissed = dayLogs.stream().anyMatch(m -> !m.isTaken());
+
+            if (anyTaken) taken++;
+            else if (anyMissed) missed++;
+        }
+
+        Map<String, Object> medicationSplit = new LinkedHashMap<>();
+        medicationSplit.put("labels", Arrays.asList("Taken", "Missed"));
+        medicationSplit.put("values", Arrays.asList(taken, missed));
+        charts.put("medicationSplit", medicationSplit);
+
+        return charts;
     }
 
     // DTO for dashboard response
