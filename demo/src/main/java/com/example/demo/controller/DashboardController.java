@@ -9,6 +9,7 @@ import com.example.demo.repository.ChildRepository;
 import com.example.demo.repository.MedicationLogRepository;
 import com.example.demo.repository.SeizureLogRepository;
 import com.example.demo.repository.UserRepository;
+import com.example.demo.service.FitbitOAuthService;
 import com.example.demo.service.FitbitService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -49,6 +50,9 @@ public class DashboardController {
 
     @Autowired
     private MedicationLogRepository medicationLogRepository;
+
+    @Autowired
+    private FitbitOAuthService fitbitOAuthService;
 
     @Value("${ml.base-url:http://127.0.0.1:8000}")
     private String mlBaseUrl;
@@ -127,7 +131,7 @@ public class DashboardController {
             response.setHeartRate(metrics.getLatestHeartRate());
             response.setHeartRateAgeMinutes(metrics.getLatestHeartRate() == null ? null : 1);
             response.setHrv(metrics.getHrv());
-            response.setFitbitStatusText("Simulated");
+            response.setFitbitStatusText(fitbitOAuthService.hasConnection(child) ? "Connected" : "Simulated");
 
             response.setRiskPercent(metrics.getRiskPercent());
             response.setRiskLevel(metrics.getRiskLevel() == null ? "UNKNOWN" : metrics.getRiskLevel());

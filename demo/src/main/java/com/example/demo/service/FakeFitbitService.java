@@ -8,13 +8,18 @@ import com.example.demo.repository.FitBitMetricsRepository;
 import com.example.demo.repository.MedicationLogRepository;
 import com.example.demo.repository.SeizureLogRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -32,8 +37,14 @@ public class FakeFitbitService implements FitbitService {
     @Autowired
     private SeizureLogRepository seizureLogRepository;
 
+    @Autowired
+    private FitbitOAuthService fitbitOAuthService;
+
     // Python FastAPI base URL (local demo)
     private static final String PYTHON_BASE_URL = "http://127.0.0.1:8000";
+
+    @Value("${fitbit.api-base:https://api.fitbit.com}")
+    private String fitbitApiBase;
 
     private final RestTemplate restTemplate = new RestTemplate();
 
@@ -46,20 +57,24 @@ public class FakeFitbitService implements FitbitService {
         FitBitMetrics metrics;
         if (existing.isPresent()) {
             metrics = existing.get();
+            if (fitbitOAuthService.hasConnection(child)) {
+                boolean updated = tryPopulateFromFitbit(metrics, child);
+                if (updated) {
+                    metrics = metricsRepository.save(metrics);
+                }
+            }
         } else {
             metrics = new FitBitMetrics();
             metrics.setChild(child);
             metrics.setDate(today);
 
-            double sleepHours = randomDouble(6.0, 9.0);
-            metrics.setSleepHours(roundOneDecimal(sleepHours));
-
-            int heartRate = randomInt(70, 110);
-            metrics.setLatestHeartRate(heartRate);
-            metrics.setLatestHeartRateAt(LocalDateTime.now().minusMinutes(1));
-
-            double hrv = randomDouble(30.0, 80.0);
-            metrics.setHrv(roundOneDecimal(hrv));
+            boolean updated = false;
+            if (fitbitOAuthService.hasConnection(child)) {
+                updated = tryPopulateFromFitbit(metrics, child);
+            }
+            if (!updated) {
+                applySimulatedMetrics(metrics);
+            }
 
             metrics = metricsRepository.save(metrics);
         }
@@ -160,6 +175,182 @@ public class FakeFitbitService implements FitbitService {
         metrics.setRiskPercent(risk);
         metrics.setRiskLevel(level);
         metrics.setRiskCalculatedAt(LocalDateTime.now());
+    }
+
+    private boolean tryPopulateFromFitbit(FitBitMetrics metrics, Child child) {
+        try {
+            LocalDate day = metrics.getDate() == null ? LocalDate.now() : metrics.getDate();
+            String dayStr = day.format(DateTimeFormatter.ISO_DATE);
+
+            Map<String, Object> sleepJson = getFitbitJson(child, "/1.2/user/-/sleep/date/" + dayStr + ".json");
+            Map<String, Object> hrJson = getFitbitJson(child, "/1/user/-/activities/heart/date/" + dayStr + "/1d/1min.json");
+            Map<String, Object> hrvJson = safeGetFitbitJson(child, "/1/user/-/hrv/date/" + dayStr + ".json");
+
+            Double sleepHours = parseSleepHours(sleepJson);
+            Integer latestHr = parseLatestHeartRate(hrJson);
+            LocalDateTime latestHrAt = parseLatestHeartRateAt(hrJson, day);
+            Double hrv = parseHrv(hrvJson);
+
+            boolean hasAny = false;
+            if (sleepHours != null) {
+                metrics.setSleepHours(roundOneDecimal(sleepHours));
+                hasAny = true;
+            }
+            if (latestHr != null) {
+                metrics.setLatestHeartRate(latestHr);
+                metrics.setLatestHeartRateAt(latestHrAt == null ? LocalDateTime.now() : latestHrAt);
+                hasAny = true;
+            }
+            if (hrv != null) {
+                metrics.setHrv(roundOneDecimal(hrv));
+                hasAny = true;
+            }
+
+            if (hasAny) {
+                fitbitOAuthService.markLastSyncNow(child);
+            }
+
+            return hasAny;
+        } catch (Exception ex) {
+            return false;
+        }
+    }
+
+    private Map<String, Object> getFitbitJson(Child child, String path) {
+        String token = fitbitOAuthService.getValidAccessToken(child);
+        String url = UriComponentsBuilder.fromHttpUrl(fitbitApiBase + path).toUriString();
+        try {
+            return doGet(url, token);
+        } catch (HttpClientErrorException.Unauthorized unauthorized) {
+            String refreshed = fitbitOAuthService.refreshAccessTokenForChild(child);
+            return doGet(url, refreshed);
+        }
+    }
+
+    private Map<String, Object> safeGetFitbitJson(Child child, String path) {
+        try {
+            return getFitbitJson(child, path);
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> doGet(String url, String accessToken) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(accessToken);
+        HttpEntity<Void> request = new HttpEntity<>(headers);
+        ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, request, Map.class);
+        if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+            throw new IllegalArgumentException("Fitbit GET failed: " + url);
+        }
+        return (Map<String, Object>) response.getBody();
+    }
+
+    private void applySimulatedMetrics(FitBitMetrics metrics) {
+        double sleepHours = randomDouble(6.0, 9.0);
+        metrics.setSleepHours(roundOneDecimal(sleepHours));
+
+        int heartRate = randomInt(70, 110);
+        metrics.setLatestHeartRate(heartRate);
+        metrics.setLatestHeartRateAt(LocalDateTime.now().minusMinutes(1));
+
+        double hrv = randomDouble(30.0, 80.0);
+        metrics.setHrv(roundOneDecimal(hrv));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Double parseSleepHours(Map<String, Object> sleepJson) {
+        if (sleepJson == null) return null;
+        Object sleepObj = sleepJson.get("sleep");
+        if (!(sleepObj instanceof List<?> sleepList) || sleepList.isEmpty()) return null;
+
+        List<Double> minutes = new ArrayList<>();
+        for (Object item : sleepList) {
+            if (item instanceof Map<?, ?> map) {
+                Object mins = map.get("minutesAsleep");
+                if (mins instanceof Number n) {
+                    minutes.add(n.doubleValue());
+                }
+            }
+        }
+        if (minutes.isEmpty()) return null;
+        double avgMinutes = minutes.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+        return avgMinutes / 60.0;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Integer parseLatestHeartRate(Map<String, Object> hrJson) {
+        if (hrJson == null) return null;
+        Object activitiesObj = hrJson.get("activities-heart-intraday");
+        if (activitiesObj instanceof Map<?, ?> intradayMap) {
+            Object datasetObj = intradayMap.get("dataset");
+            if (datasetObj instanceof List<?> dataset && !dataset.isEmpty()) {
+                Object last = dataset.get(dataset.size() - 1);
+                if (last instanceof Map<?, ?> point) {
+                    Object value = point.get("value");
+                    if (value instanceof Number n) {
+                        return n.intValue();
+                    }
+                }
+            }
+        }
+
+        Object activitiesDayObj = hrJson.get("activities-heart");
+        if (activitiesDayObj instanceof List<?> dayList && !dayList.isEmpty()) {
+            Object first = dayList.get(0);
+            if (first instanceof Map<?, ?> firstMap) {
+                Object valueObj = firstMap.get("value");
+                if (valueObj instanceof Map<?, ?> valueMap) {
+                    Object resting = valueMap.get("restingHeartRate");
+                    if (resting instanceof Number n) {
+                        return n.intValue();
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private LocalDateTime parseLatestHeartRateAt(Map<String, Object> hrJson, LocalDate date) {
+        if (hrJson == null) return null;
+        Object activitiesObj = hrJson.get("activities-heart-intraday");
+        if (!(activitiesObj instanceof Map<?, ?> intradayMap)) return null;
+        Object datasetObj = intradayMap.get("dataset");
+        if (!(datasetObj instanceof List<?> dataset) || dataset.isEmpty()) return null;
+
+        Object last = dataset.get(dataset.size() - 1);
+        if (!(last instanceof Map<?, ?> point)) return null;
+        Object timeObj = point.get("time");
+        if (!(timeObj instanceof String t) || t.isBlank()) return null;
+
+        try {
+            return LocalDateTime.parse(date + "T" + t);
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Double parseHrv(Map<String, Object> hrvJson) {
+        if (hrvJson == null) return null;
+        Object hrvObj = hrvJson.get("hrv");
+        if (!(hrvObj instanceof List<?> hrvList) || hrvList.isEmpty()) return null;
+
+        List<Double> values = new ArrayList<>();
+        for (Object item : hrvList) {
+            if (!(item instanceof Map<?, ?> map)) continue;
+            Object valueObj = map.get("value");
+            if (valueObj instanceof Map<?, ?> valueMap) {
+                Object rmssd = valueMap.get("dailyRmssd");
+                if (rmssd instanceof Number n) {
+                    values.add(n.doubleValue());
+                }
+            }
+        }
+        if (values.isEmpty()) return null;
+        return values.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
     }
 
     private Integer safeInt(Object value) {

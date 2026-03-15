@@ -104,6 +104,32 @@ public class FitbitOAuthService {
         return existing.isPresent();
     }
 
+    public boolean hasConnection(Child child) {
+        return fitbitConnectionRepository.findByChild(child).isPresent();
+    }
+
+    public String getValidAccessToken(Child child) {
+        FitbitConnection connection = fitbitConnectionRepository.findByChild(child)
+                .orElseThrow(() -> new IllegalArgumentException("No Fitbit connection for child"));
+        if (connection.getExpiresAt() == null || connection.getExpiresAt().isBefore(LocalDateTime.now().plusMinutes(1))) {
+            return refreshAccessToken(connection).accessToken();
+        }
+        return connection.getAccessToken();
+    }
+
+    public String refreshAccessTokenForChild(Child child) {
+        FitbitConnection connection = fitbitConnectionRepository.findByChild(child)
+                .orElseThrow(() -> new IllegalArgumentException("No Fitbit connection for child"));
+        return refreshAccessToken(connection).accessToken();
+    }
+
+    public void markLastSyncNow(Child child) {
+        fitbitConnectionRepository.findByChild(child).ifPresent(connection -> {
+            connection.setLastSyncAt(LocalDateTime.now());
+            fitbitConnectionRepository.save(connection);
+        });
+    }
+
     private void cleanupExpiredStates() {
         Instant now = Instant.now();
         pendingStates.entrySet().removeIf(entry -> entry.getValue().expiresAt().isBefore(now));
@@ -149,6 +175,50 @@ public class FitbitOAuthService {
         }
 
         return new FitbitTokenResponse(accessToken, refreshToken, userId, expiresIn);
+    }
+
+    private FitbitTokenResponse refreshAccessToken(FitbitConnection connection) {
+        if (clientId == null || clientId.isBlank() || clientSecret == null || clientSecret.isBlank()) {
+            throw new IllegalStateException("Fitbit client id/secret is missing");
+        }
+        if (connection.getRefreshToken() == null || connection.getRefreshToken().isBlank()) {
+            throw new IllegalArgumentException("Missing refresh token");
+        }
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        headers.setAccept(java.util.List.of(MediaType.APPLICATION_JSON));
+        headers.set("Authorization", basicAuthHeader(clientId, clientSecret));
+
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("grant_type", "refresh_token");
+        form.add("refresh_token", connection.getRefreshToken());
+
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(form, headers);
+        ResponseEntity<Map> response = restTemplate.exchange(tokenUrl, HttpMethod.POST, request, Map.class);
+        if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+            throw new IllegalArgumentException("Failed to refresh Fitbit token");
+        }
+
+        Map body = response.getBody();
+        String accessToken = asString(body.get("access_token"));
+        String refreshToken = asString(body.get("refresh_token"));
+        String userId = asString(body.get("user_id"));
+        Integer expiresIn = asInt(body.get("expires_in"));
+
+        if (isBlank(accessToken) || isBlank(refreshToken) || expiresIn == null) {
+            throw new IllegalArgumentException("Refresh token response missing required fields");
+        }
+
+        connection.setAccessToken(accessToken);
+        connection.setRefreshToken(refreshToken);
+        if (!isBlank(userId)) {
+            connection.setFitbitUserId(userId);
+        }
+        connection.setExpiresAt(LocalDateTime.now().plusSeconds(expiresIn));
+        fitbitConnectionRepository.save(connection);
+
+        return new FitbitTokenResponse(accessToken, refreshToken, connection.getFitbitUserId(), expiresIn);
     }
 
     private void saveConnection(Long childId, FitbitTokenResponse token) {
