@@ -4,6 +4,8 @@ import styled from 'styled-components/native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { BASE_URL } from '../config';
+import InsightTrendLine from '../components/charts/InsightTrendLine';
+import InsightTimingPie from '../components/charts/InsightTimingPie';
 
 export default function ReportPreview({ route }) {
   const { reportData, downloadUrl } = route.params;
@@ -33,6 +35,28 @@ export default function ReportPreview({ route }) {
       </Container>
     );
   }
+
+  const reportCharts = reportData.charts || {
+    trendSeries: { labels: [], values: [] },
+    timingSplit: { labels: [], values: [] },
+  };
+  const trendGrouping = reportCharts?.trendSeries?.grouping === 'weekly' ? 'weekly' : 'daily';
+  const trendLabels = Array.isArray(reportCharts?.trendSeries?.labels) ? reportCharts.trendSeries.labels : [];
+  const trendValues = Array.isArray(reportCharts?.trendSeries?.values)
+    ? reportCharts.trendSeries.values.map((v) => Number(v || 0))
+    : [];
+  const trendTotal = trendValues.reduce((sum, value) => sum + value, 0);
+  const trendMax = trendValues.length ? Math.max(...trendValues) : 0;
+  const topPeriods = trendLabels.filter((_, idx) => trendValues[idx] === trendMax && trendMax > 0);
+  const trendSummary = trendTotal === 0
+    ? 'No seizures logged in this report period.'
+    : topPeriods.length > 1
+      ? `${trendTotal} seizures in this report period. Highest ${trendGrouping === 'weekly' ? 'weeks' : 'dates'}: ${topPeriods.join(', ')} (${trendMax}).`
+      : `${trendTotal} seizures in this report period. Highest ${trendGrouping === 'weekly' ? 'week' : 'date'}: ${topPeriods[0]} (${trendMax}).`;
+  const timingInsight = reportData.insights?.find((item) => {
+    const text = String(item || '').toLowerCase();
+    return text.includes('morning') || text.includes('afternoon') || text.includes('evening') || text.includes('night');
+  }) || 'Not enough data yet.';
 
   return (
     <Container>
@@ -71,22 +95,27 @@ export default function ReportPreview({ route }) {
         <Card>
           <SectionTitle>Highlights</SectionTitle>
           {reportData.executiveSummary?.map((item, idx) => (
-            <Bullet key={`sum-${idx}`}>• {item}</Bullet>
+            <Bullet key={`sum-${idx}`}>- {item}</Bullet>
           ))}
         </Card>
 
         <Card>
           <SectionTitle>Patterns & Triggers</SectionTitle>
           <ChartBlock>
-            <ChartTitle>When seizures tend to happen</ChartTitle>
-            <ChartCaption>Day of week by time of day</ChartCaption>
-            <ChartImage source={{ uri: reportData.heatmapChart }} />
-            <ChartLegend>Night • Morning • Afternoon • Evening</ChartLegend>
+            <ChartTitle>Seizure trend in this timeframe</ChartTitle>
+            <ChartCaption>
+              {trendGrouping === 'weekly'
+                ? 'How many seizures were logged across each week in the selected period'
+                : 'How many seizures were logged across the selected dates'}
+            </ChartCaption>
+            <InsightTrendLine data={reportCharts.trendSeries} />
+            <ChartLegend>{trendSummary}</ChartLegend>
           </ChartBlock>
           <ChartBlock>
-            <ChartTitle>Medication link to seizures</ChartTitle>
-            <ChartCaption>Seizures on days meds were taken vs missed</ChartCaption>
-            <ChartImage source={{ uri: reportData.medsChart }} />
+            <ChartTitle>When seizures tend to happen</ChartTitle>
+            <ChartCaption>How seizure events split across the day</ChartCaption>
+            <InsightTimingPie data={reportCharts.timingSplit} />
+            <ChartLegend>{timingInsight}</ChartLegend>
           </ChartBlock>
         </Card>
 
@@ -142,7 +171,7 @@ export default function ReportPreview({ route }) {
         <Card>
           <SectionTitle>Smart Insights</SectionTitle>
           {reportData.insights?.map((item, idx) => (
-            <Bullet key={`ins-${idx}`}>• {item}</Bullet>
+            <Bullet key={`ins-${idx}`}>- {item}</Bullet>
           ))}
         </Card>
 
@@ -251,12 +280,6 @@ const TimelineNotes = styled.Text`
   font-size: 11px;
   color: #2f2f2f;
   margin-top: 4px;
-`;
-
-const ChartImage = styled.Image`
-  width: 100%;
-  height: 200px;
-  resize-mode: contain;
 `;
 
 const ChartBlock = styled.View`

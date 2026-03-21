@@ -20,6 +20,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -161,6 +162,7 @@ public class ReportService {
         data.fitbitSummary = buildFitbitSummary(metrics);
         data.insights = buildInsights(child, seizures, meds, metrics, startDate, endDate);
         data.appointments = buildAppointments(appointmentsInRange, upcoming);
+        data.charts = buildReportCharts(seizures, startDate, endDate);
 
         data.heatmapChart = buildHeatmapChart(seizures);
         data.medsChart = buildMedsChart(seizures, meds, startDate, endDate);
@@ -411,6 +413,78 @@ public class ReportService {
         }
 
         return insights;
+    }
+
+    private Map<String, Object> buildReportCharts(List<SeizureLog> seizures, LocalDate startDate, LocalDate endDate) {
+        Map<String, Object> charts = new LinkedHashMap<>();
+
+        List<String> trendLabels = new ArrayList<>();
+        List<Integer> trendValues = new ArrayList<>();
+
+        long dayCount = ChronoUnit.DAYS.between(startDate, endDate) + 1;
+        Map<LocalDate, Long> trendByDate = seizures.stream()
+                .filter(s -> s.getTimestamp() != null)
+                .collect(Collectors.groupingBy(s -> s.getTimestamp().toLocalDate(), Collectors.counting()));
+
+        boolean useWeeklyTrend = dayCount > 14;
+        if (useWeeklyTrend) {
+            LocalDate current = startDate;
+            int weekNumber = 1;
+            while (!current.isAfter(endDate)) {
+                LocalDate weekEnd = current.plusDays(6);
+                if (weekEnd.isAfter(endDate)) {
+                    weekEnd = endDate;
+                }
+
+                int weekTotal = 0;
+                LocalDate day = current;
+                while (!day.isAfter(weekEnd)) {
+                    weekTotal += trendByDate.getOrDefault(day, 0L).intValue();
+                    day = day.plusDays(1);
+                }
+
+                trendLabels.add("Week " + weekNumber);
+                trendValues.add(weekTotal);
+
+                current = weekEnd.plusDays(1);
+                weekNumber++;
+            }
+        } else {
+            LocalDate current = startDate;
+            while (!current.isAfter(endDate)) {
+                trendLabels.add(current.format(DateTimeFormatter.ofPattern("dd MMM")));
+                trendValues.add(trendByDate.getOrDefault(current, 0L).intValue());
+                current = current.plusDays(1);
+            }
+        }
+
+        Map<String, Object> trendSeries = new LinkedHashMap<>();
+        trendSeries.put("labels", trendLabels);
+        trendSeries.put("values", trendValues);
+        trendSeries.put("grouping", useWeeklyTrend ? "weekly" : "daily");
+        charts.put("trendSeries", trendSeries);
+
+        Map<String, Integer> timingBuckets = new LinkedHashMap<>();
+        timingBuckets.put("Night", 0);
+        timingBuckets.put("Morning", 0);
+        timingBuckets.put("Afternoon", 0);
+        timingBuckets.put("Evening", 0);
+
+        for (SeizureLog seizure : seizures) {
+            if (seizure.getTimestamp() == null) continue;
+            int hour = seizure.getTimestamp().getHour();
+            if (hour <= 5) timingBuckets.computeIfPresent("Night", (k, v) -> v + 1);
+            else if (hour <= 11) timingBuckets.computeIfPresent("Morning", (k, v) -> v + 1);
+            else if (hour <= 17) timingBuckets.computeIfPresent("Afternoon", (k, v) -> v + 1);
+            else timingBuckets.computeIfPresent("Evening", (k, v) -> v + 1);
+        }
+
+        Map<String, Object> timingSplit = new LinkedHashMap<>();
+        timingSplit.put("labels", new ArrayList<>(timingBuckets.keySet()));
+        timingSplit.put("values", new ArrayList<>(timingBuckets.values()));
+        charts.put("timingSplit", timingSplit);
+
+        return charts;
     }
 
     private List<String> fetchMlInsights(Long childId) {
@@ -713,6 +787,7 @@ public class ReportService {
         public FitBitSummary fitbitSummary;
         public List<String> insights;
         public List<AppointmentRow> appointments;
+        public Map<String, Object> charts;
 
         public String heatmapChart;
         public String medsChart;
