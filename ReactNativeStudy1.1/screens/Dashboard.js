@@ -1,6 +1,6 @@
 // screens/Dashboard.js
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StatusBar, Alert, ScrollView, Platform, Modal, Pressable, SafeAreaView } from 'react-native';
+import { ActivityIndicator, StatusBar, Alert, ScrollView, Platform, Modal, Pressable, SafeAreaView, Linking } from 'react-native';
 import styled from 'styled-components/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -24,6 +24,7 @@ export default function Dashboard({ route, navigation }) {
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showMedicationModal, setShowMedicationModal] = useState(false);
   const [refreshingRisk, setRefreshingRisk] = useState(false);
+  const [fitbitBusy, setFitbitBusy] = useState(false);
 
   const maybeShowMedicationReminder = (data) => {
     if (!data?.hasChild || data?.medicationTakenToday) return;
@@ -202,6 +203,7 @@ export default function Dashboard({ route, navigation }) {
   const age = dashboard?.dob ? calculateAgeFromDob(dashboard.dob) : '-';
 
   const riskLevel = (dashboard?.riskLevel || 'UNKNOWN').toUpperCase();
+  const fitbitConnected = String(dashboard?.fitbitStatusText || '').toUpperCase() === 'CONNECTED';
 
   const getRiskTone = (level) => {
     if (level === 'LOW') {
@@ -220,6 +222,69 @@ export default function Dashboard({ route, navigation }) {
 
   const findInsight = (matcher) => {
     return insights.find((item) => matcher((item || '').toLowerCase())) || 'Not enough data yet.';
+  };
+
+  const connectFitbit = async () => {
+    if (!dashboard?.childId) {
+      Alert.alert('No child linked', 'Add a child first to connect Fitbit.');
+      return;
+    }
+
+    try {
+      setFitbitBusy(true);
+      const response = await fetch(`${BASE_URL}/api/fitbit/connect/${dashboard.childId}?asJson=true`);
+      const text = await response.text();
+      if (!response.ok) {
+        Alert.alert('Error', text || 'Could not start Fitbit connect.');
+        return;
+      }
+
+      const data = text ? JSON.parse(text) : null;
+      const authUrl = data?.authUrl;
+      if (!authUrl) {
+        Alert.alert('Error', 'Fitbit auth link was not returned.');
+        return;
+      }
+
+      const canOpen = await Linking.canOpenURL(authUrl);
+      if (!canOpen) {
+        Alert.alert('Error', 'Could not open Fitbit authorization page.');
+        return;
+      }
+
+      await Linking.openURL(authUrl);
+      Alert.alert('Continue in browser', 'After allowing Fitbit access, return here and tap Sync Fitbit.');
+    } catch (err) {
+      Alert.alert('Error', 'Could not start Fitbit connect.');
+    } finally {
+      setFitbitBusy(false);
+    }
+  };
+
+  const disconnectFitbit = async () => {
+    if (!dashboard?.childId) {
+      Alert.alert('No child linked', 'Add a child first.');
+      return;
+    }
+
+    try {
+      setFitbitBusy(true);
+      const response = await fetch(`${BASE_URL}/api/fitbit/disconnect/${dashboard.childId}`, {
+        method: 'POST',
+      });
+      const text = await response.text();
+      if (!response.ok) {
+        Alert.alert('Error', text || 'Could not disconnect Fitbit.');
+        return;
+      }
+
+      await refreshRisk(true);
+      Alert.alert('Done', 'Fitbit disconnected.');
+    } catch (err) {
+      Alert.alert('Error', 'Could not disconnect Fitbit.');
+    } finally {
+      setFitbitBusy(false);
+    }
   };
 
   const timingInsight = findInsight((txt) =>
@@ -324,6 +389,22 @@ export default function Dashboard({ route, navigation }) {
                   Fitbit status: {dashboard.fitbitStatusText || 'Not connected'}
                 </DeviceText>
               </DeviceRow>
+
+              <FitbitActionsRow>
+                {fitbitConnected ? (
+                  <FitbitButton disabled={fitbitBusy} onPress={disconnectFitbit}>
+                    <FitbitButtonText>{fitbitBusy ? 'Working...' : 'Disconnect Fitbit'}</FitbitButtonText>
+                  </FitbitButton>
+                ) : (
+                  <FitbitButton disabled={fitbitBusy} onPress={connectFitbit}>
+                    <FitbitButtonText>{fitbitBusy ? 'Working...' : 'Connect Fitbit'}</FitbitButtonText>
+                  </FitbitButton>
+                )}
+
+                <FitbitButton disabled={refreshingRisk} onPress={() => refreshRisk(false)}>
+                  <FitbitButtonText>{refreshingRisk ? 'Syncing...' : 'Sync Fitbit'}</FitbitButtonText>
+                </FitbitButton>
+              </FitbitActionsRow>
 
               <StatusRing style={{ borderColor: riskTone.color }}>
                 <StatusInner>
@@ -660,6 +741,28 @@ const DeviceDot = styled.View`
 
 const DeviceText = styled.Text`
   font-size: 12px;
+  color: #6b5e58;
+`;
+
+const FitbitActionsRow = styled.View`
+  margin-top: 10px;
+  flex-direction: row;
+  justify-content: space-between;
+`;
+
+const FitbitButton = styled.TouchableOpacity`
+  width: 48%;
+  background-color: #f5efe6;
+  border-radius: 10px;
+  border-width: 1px;
+  border-color: #d4c6bd;
+  padding: 8px 10px;
+  align-items: center;
+`;
+
+const FitbitButtonText = styled.Text`
+  font-size: 12px;
+  font-weight: 700;
   color: #6b5e58;
 `;
 
