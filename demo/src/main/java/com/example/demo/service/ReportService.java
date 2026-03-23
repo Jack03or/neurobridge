@@ -11,9 +11,6 @@ import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
 import org.springframework.web.client.RestTemplate;
 
-import java.awt.*;
-import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -24,8 +21,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.*;
 import java.util.stream.Collectors;
-
-import javax.imageio.ImageIO;
 
 @Service
 public class ReportService {
@@ -163,9 +158,6 @@ public class ReportService {
         data.insights = buildInsights(child, seizures, meds, metrics, startDate, endDate);
         data.appointments = buildAppointments(appointmentsInRange, upcoming);
         data.charts = buildReportCharts(seizures, startDate, endDate);
-
-        data.heatmapChart = buildHeatmapChart(seizures);
-        data.medsChart = buildMedsChart(seizures, meds, startDate, endDate);
 
         data.summaryJson = buildSummaryJson(data);
 
@@ -545,153 +537,6 @@ public class ReportService {
         return label;
     }
 
-    private String buildHeatmapChart(List<SeizureLog> seizures) {
-        int rows = 7;
-        int cols = 4;
-        int[][] counts = new int[rows][cols];
-
-        for (SeizureLog s : seizures) {
-            if (s.getTimestamp() == null) continue;
-            LocalDateTime ts = s.getTimestamp();
-            int dayIndex = (ts.getDayOfWeek().getValue() + 6) % 7;
-            int hour = ts.getHour();
-            int col = hour <= 5 ? 0 : hour <= 11 ? 1 : hour <= 17 ? 2 : 3;
-            counts[dayIndex][col]++;
-        }
-
-        int max = Arrays.stream(counts)
-                .flatMapToInt(arr -> Arrays.stream(arr))
-                .max()
-                .orElse(1);
-
-        int cell = 40;
-        int paddingLeft = 80;
-        int paddingTop = 40;
-        int width = paddingLeft + cols * cell + 20;
-        int height = paddingTop + rows * cell + 30;
-
-        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = image.createGraphics();
-
-        g.setColor(Color.WHITE);
-        g.fillRect(0, 0, width, height);
-        g.setFont(new Font("SansSerif", Font.PLAIN, 12));
-
-        String[] colLabels = {"Night", "Morning", "Afternoon", "Evening"};
-        String[] rowLabels = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
-
-        for (int c = 0; c < cols; c++) {
-            g.setColor(Color.DARK_GRAY);
-            g.drawString(colLabels[c], paddingLeft + c * cell + 5, 25);
-        }
-
-        for (int r = 0; r < rows; r++) {
-            g.setColor(Color.DARK_GRAY);
-            g.drawString(rowLabels[r], 20, paddingTop + r * cell + 25);
-        }
-
-        Color base = new Color(72, 128, 200);
-
-        for (int r = 0; r < rows; r++) {
-            for (int c = 0; c < cols; c++) {
-                float intensity = counts[r][c] / (float) max;
-                Color cellColor = blend(Color.WHITE, base, intensity);
-                int x = paddingLeft + c * cell;
-                int y = paddingTop + r * cell;
-                g.setColor(cellColor);
-                g.fillRect(x, y, cell, cell);
-                g.setColor(Color.GRAY);
-                g.drawRect(x, y, cell, cell);
-                if (counts[r][c] > 0) {
-                    g.setColor(Color.BLACK);
-                    g.drawString(String.valueOf(counts[r][c]), x + 15, y + 22);
-                }
-            }
-        }
-
-        g.dispose();
-        return "data:image/png;base64," + encodeImage(image);
-    }
-
-    private String buildMedsChart(List<SeizureLog> seizures, List<MedicationLog> meds, LocalDate startDate, LocalDate endDate) {
-        Set<LocalDate> seizureDays = seizures.stream()
-                .filter(s -> s.getTimestamp() != null)
-                .map(s -> s.getTimestamp().toLocalDate())
-                .collect(Collectors.toSet());
-
-        Map<LocalDate, List<MedicationLog>> medsByDate = meds.stream()
-                .collect(Collectors.groupingBy(MedicationLog::getDate));
-
-        int seizureOnTaken = 0;
-        int seizureOnMissed = 0;
-
-        LocalDate current = startDate;
-        while (!current.isAfter(endDate)) {
-            List<MedicationLog> dayLogs = medsByDate.getOrDefault(current, List.of());
-            boolean anyTaken = dayLogs.stream().anyMatch(MedicationLog::isTaken);
-            boolean anyMissed = dayLogs.stream().anyMatch(m -> !m.isTaken());
-            boolean hadSeizure = seizureDays.contains(current);
-
-            if (hadSeizure) {
-                if (anyTaken) seizureOnTaken++;
-                else if (anyMissed) seizureOnMissed++;
-            }
-            current = current.plusDays(1);
-        }
-
-        int width = 320;
-        int height = 200;
-        int padding = 40;
-
-        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = image.createGraphics();
-        g.setColor(Color.WHITE);
-        g.fillRect(0, 0, width, height);
-        g.setFont(new Font("SansSerif", Font.PLAIN, 12));
-
-        int max = Math.max(1, Math.max(seizureOnTaken, seizureOnMissed));
-        int chartHeight = height - padding * 2;
-        int barWidth = 70;
-        int gap = 40;
-
-        int takenBar = (int) (chartHeight * (seizureOnTaken / (double) max));
-        int missedBar = (int) (chartHeight * (seizureOnMissed / (double) max));
-
-        int baseY = height - padding;
-        int takenX = padding + 10;
-        int missedX = takenX + barWidth + gap;
-
-        g.setColor(new Color(90, 170, 120));
-        g.fillRect(takenX, baseY - takenBar, barWidth, takenBar);
-        g.setColor(new Color(200, 90, 90));
-        g.fillRect(missedX, baseY - missedBar, barWidth, missedBar);
-
-        g.setColor(Color.DARK_GRAY);
-        g.drawString("Meds taken", takenX - 2, baseY + 15);
-        g.drawString("Meds missed", missedX - 4, baseY + 15);
-        g.drawString(String.valueOf(seizureOnTaken), takenX + 25, baseY - takenBar - 5);
-        g.drawString(String.valueOf(seizureOnMissed), missedX + 25, baseY - missedBar - 5);
-
-        g.dispose();
-        return "data:image/png;base64," + encodeImage(image);
-    }
-
-    private Color blend(Color a, Color b, float t) {
-        int r = (int) (a.getRed() + (b.getRed() - a.getRed()) * t);
-        int g = (int) (a.getGreen() + (b.getGreen() - a.getGreen()) * t);
-        int bl = (int) (a.getBlue() + (b.getBlue() - a.getBlue()) * t);
-        return new Color(r, g, bl);
-    }
-
-    private String encodeImage(BufferedImage image) {
-        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-            ImageIO.write(image, "png", baos);
-            return Base64.getEncoder().encodeToString(baos.toByteArray());
-        } catch (IOException e) {
-            return "";
-        }
-    }
-
     private Path resolveStorageDir() {
         Path path = Paths.get(reportsStoragePath);
         if (!path.isAbsolute()) {
@@ -788,9 +633,6 @@ public class ReportService {
         public List<String> insights;
         public List<AppointmentRow> appointments;
         public Map<String, Object> charts;
-
-        public String heatmapChart;
-        public String medsChart;
 
         public Map<String, Object> summaryJson;
     }
