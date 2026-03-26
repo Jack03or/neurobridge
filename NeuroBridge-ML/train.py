@@ -16,6 +16,8 @@ from sklearn.pipeline import Pipeline
 
 from xgboost import XGBClassifier
 
+from insights import compute_insights, compute_insights_by_child
+
 
 DB_DEFAULTS = {
     "host": "127.0.0.1",
@@ -483,112 +485,6 @@ def train_model(events: pd.DataFrame, out_model: Path, out_metrics: Path) -> Non
 
     joblib.dump(model, out_model)
     out_metrics.write_text(json.dumps(metrics, indent=2))
-
-
-def compute_insights(events: pd.DataFrame) -> dict:
-    insights = []
-
-    total = int(len(events))
-    total_seizures = int(events["label"].sum())
-    total_non = total - total_seizures
-
-    def rate(label_df: pd.DataFrame, condition: pd.Series) -> float:
-        denom = max(len(label_df), 1)
-        return float(condition.sum() / denom)
-
-    seizures = events[events["label"] == 1]
-    non = events[events["label"] == 0]
-
-    missed_meds_rate_seiz = rate(seizures, seizures["any_missed_med"] == 1)
-    missed_meds_rate_non = rate(non, non["any_missed_med"] == 1)
-    late_meds_rate_seiz = rate(seizures, seizures["any_late_med"] == 1)
-    late_meds_rate_non = rate(non, non["any_late_med"] == 1)
-
-    low_sleep_thresh = 6.0
-    low_sleep_seiz = rate(seizures, seizures["sleep_hours"] < low_sleep_thresh)
-    low_sleep_non = rate(non, non["sleep_hours"] < low_sleep_thresh)
-
-    if total_seizures > 0:
-        if missed_meds_rate_seiz > missed_meds_rate_non + 0.1:
-            insights.append(
-                "Seizures were more common on days with missed medication."
-            )
-        if low_sleep_seiz > low_sleep_non + 0.1:
-            insights.append(
-                "Seizures were more common on days with low sleep (<6h)."
-            )
-
-        combined_seiz = rate(
-            seizures,
-            (seizures["any_missed_med"] == 1) & (seizures["sleep_hours"] < low_sleep_thresh),
-        )
-        if combined_seiz > 0.2:
-            insights.append(
-                "Missed medication plus low sleep showed up together on seizure days."
-            )
-        if late_meds_rate_seiz > late_meds_rate_non + 0.1:
-            insights.append(
-                "Late medication was more common on seizure days."
-            )
-
-        hour_bins = pd.cut(
-            seizures["hour_of_day"],
-            bins=[-1, 5, 11, 17, 23],
-            labels=["Night", "Morning", "Afternoon", "Evening"],
-        )
-        top_time = hour_bins.value_counts().idxmax()
-        insights.append(f"Most seizures happened in the {top_time} time window.")
-
-        day_bins = seizures["day_of_week"].map(
-            {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
-        )
-        top_day = day_bins.value_counts().idxmax()
-        insights.append(f"Seizures were most common on {top_day}.")
-
-        seizure_dates = (
-            seizures["timestamp"]
-            .dropna()
-            .dt.date.drop_duplicates()
-            .sort_values()
-            .to_list()
-        )
-        streak = 1
-        longest = 1
-        for i in range(1, len(seizure_dates)):
-            if (seizure_dates[i] - seizure_dates[i - 1]).days == 1:
-                streak += 1
-                longest = max(longest, streak)
-            else:
-                streak = 1
-        if longest >= 2:
-            insights.append(f"There was a streak of {longest} consecutive seizure day(s).")
-
-    summary = {
-        "total_rows": total,
-        "total_seizures": total_seizures,
-        "total_non_seizure": total_non,
-        "missed_meds_rate_seizure": missed_meds_rate_seiz,
-        "missed_meds_rate_non_seizure": missed_meds_rate_non,
-        "late_meds_rate_seizure": late_meds_rate_seiz,
-        "late_meds_rate_non_seizure": late_meds_rate_non,
-        "low_sleep_rate_seizure": low_sleep_seiz,
-        "low_sleep_rate_non_seizure": low_sleep_non,
-        "insights": insights,
-    }
-    return summary
-
-
-def compute_insights_by_child(events: pd.DataFrame) -> dict:
-    by_child = {}
-    if events.empty:
-        return {"by_child": by_child}
-
-    for child_id, child_events in events.groupby("child_id"):
-        if pd.isna(child_id):
-            continue
-        by_child[str(int(child_id))] = compute_insights(child_events.copy())
-
-    return {"by_child": by_child}
 
 
 def main() -> None:
