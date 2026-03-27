@@ -165,54 +165,54 @@ def compute_insights(events: pd.DataFrame) -> dict:
             and low_sleep_streak_seiz > low_sleep_streak_non + 0.15
         ):
             insights.append(
-                f"Sleep has been low for {current_low_sleep_streak} nights in a row. Similar low-sleep streaks appeared before previous seizure days."
+                f"Poor sleep has lasted {current_low_sleep_streak} nights in a row. This pattern has happened before seizure days."
             )
 
         if latest_day is not None and latest_day["any_missed_med"] == 1 and missed_meds_rate_seiz > missed_meds_rate_non + 0.10:
             insights.append(
-                "Medication was missed today. Missed medication has appeared before previous seizure days."
+                "Today's medication was missed. Seizure risk has been higher when doses are skipped."
             )
 
         if latest_day is not None and latest_day["low_sleep_and_missed"] == 1 and combined_days_seiz > combined_days_non + 0.10:
             insights.append(
-                "Low sleep and missed medication are happening together again. That combination has appeared on previous seizure days."
+                "Poor sleep and a missed dose are happening together today. This combination has happened before seizure days. Consider extra monitoring."
             )
 
         if latest_day is not None and latest_day["any_late_med"] == 1 and late_meds_rate_seiz > late_meds_rate_non + 0.10:
             insights.append(
-                "Medication has been taken late recently. Late doses were seen before previous seizure days."
+                "Medication has been taken late recently. Late doses have happened before seizure days."
             )
 
         if latest_low_hrv and low_hrv_rate_seiz > low_hrv_rate_non + 0.12:
             insights.append(
-                "HRV is lower than this child's usual level. Lower HRV showed up before previous seizure days."
+                "Stress levels are higher than usual today. Similar changes have happened before seizure days."
             )
 
         if latest_high_hr and high_hr_rate_seiz > high_hr_rate_non + 0.12:
             insights.append(
-                "Heart rate is higher than this child's usual level. Similar increases were seen before previous seizure days."
+                "Heart rate was higher than normal at the last update. Similar changes have happened before seizure days."
             )
 
         if missed_meds_rate_seiz > missed_meds_rate_non + 0.1:
-            insights.append("Seizures were more common on days with missed medication.")
+            insights.append("When medication is missed, seizure risk has historically been higher.")
 
         if low_sleep_seiz > low_sleep_non + 0.1:
-            insights.append("Seizures were more common on days with low sleep (<6h).")
+            insights.append("After poor sleep, seizure risk has historically been higher.")
 
         if combined_days_seiz > combined_days_non + 0.1:
-            insights.append("Low sleep and missed medication showed up together more often on seizure days.")
+            insights.append("Poor sleep and missed medication together have been linked with higher seizure risk.")
 
         if late_meds_rate_seiz > late_meds_rate_non + 0.1:
-            insights.append("Late medication was more common on seizure days.")
+            insights.append("When medication is taken late, seizure risk has sometimes been higher.")
 
         if low_sleep_streak_seiz > low_sleep_streak_non + 0.12:
-            insights.append("Seizures were more common after 2 or more nights of low sleep in a row.")
+            insights.append("When poor sleep lasts 2 or more nights, seizure risk has historically been higher.")
 
         if low_hrv_rate_seiz > low_hrv_rate_non + 0.12:
-            insights.append("Lower HRV appeared more often before seizure days.")
+            insights.append("Higher stress has been seen more often before seizure days.")
 
         if high_hr_rate_seiz > high_hr_rate_non + 0.12:
-            insights.append("Higher heart rate appeared more often before seizure days.")
+            insights.append("A higher heart rate has been seen more often before seizure days.")
 
         hour_bins = pd.cut(
             seizures["hour_of_day"],
@@ -220,11 +220,11 @@ def compute_insights(events: pd.DataFrame) -> dict:
             labels=TIME_LABELS,
         )
         top_time = hour_bins.value_counts().idxmax()
-        insights.append(f"Most seizures happened in the {top_time} time window.")
+        insights.append(f"Seizures have happened most often in the {str(top_time).lower()} time window.")
 
         day_bins = seizures["day_of_week"].map(DAY_LABELS)
         top_day = day_bins.value_counts().idxmax()
-        insights.append(f"Seizures were most common on {top_day}.")
+        insights.append(f"Seizures have happened most often on {top_day}.")
 
         seizure_dates = (
             seizures["timestamp"]
@@ -235,7 +235,7 @@ def compute_insights(events: pd.DataFrame) -> dict:
         )
         longest = longest_seizure_streak(seizure_dates)
         if longest >= 2:
-            insights.append(f"There was a streak of {longest} consecutive seizure day(s).")
+            insights.append(f"There was a run of {longest} seizure days in a row.")
 
     insights = unique_keep_order(insights)[:6]
 
