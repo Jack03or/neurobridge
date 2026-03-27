@@ -93,7 +93,7 @@ export default function Dashboard({ route, navigation }) {
         return;
       }
       const data = text ? JSON.parse(text) : {};
-      setInsights(Array.isArray(data.insights) ? data.insights.slice(0, 3) : []);
+      setInsights(Array.isArray(data.insights) ? data.insights.slice(0, 4) : []);
       setCharts(data.charts || {
         trendSeries: { labels: [], values: [] },
         medicationSplit: { labels: [], values: [] },
@@ -220,10 +220,6 @@ export default function Dashboard({ route, navigation }) {
 
   const riskTone = getRiskTone(riskLevel);
 
-  const findInsight = (matcher) => {
-    return insights.find((item) => matcher((item || '').toLowerCase())) || 'Not enough data yet.';
-  };
-
   const connectFitbit = async () => {
     if (!dashboard?.childId) {
       Alert.alert('No child linked', 'Add a child first to connect Fitbit.');
@@ -287,12 +283,7 @@ export default function Dashboard({ route, navigation }) {
     }
   };
 
-  const timingInsight = findInsight((txt) =>
-    txt.includes('morning') || txt.includes('afternoon') || txt.includes('evening') || txt.includes('night')
-  );
-  const weeklyInsight = findInsight((txt) =>
-    txt.includes('mon') || txt.includes('tue') || txt.includes('wed') || txt.includes('thu') || txt.includes('fri') || txt.includes('sat') || txt.includes('sun')
-  );
+  const warningInsights = insights.length ? insights : ['No strong warning signs found today.'];
   const trendLabels = Array.isArray(charts?.trendSeries?.labels) ? charts.trendSeries.labels : [];
   const trendValues = Array.isArray(charts?.trendSeries?.values) ? charts.trendSeries.values.map((v) => Number(v || 0)) : [];
   const trendTotal = trendValues.reduce((sum, value) => sum + value, 0);
@@ -303,6 +294,16 @@ export default function Dashboard({ route, navigation }) {
     : topDays.length > 1
       ? `${trendTotal} seizures in the last 7 days. Highest days: ${topDays.join(', ')} (${trendMax}).`
       : `${trendTotal} seizures in the last 7 days. Highest day: ${topDays[0]} (${trendMax}).`;
+  const timingLabels = Array.isArray(charts?.timingSplit?.labels) ? charts.timingSplit.labels : [];
+  const timingValues = Array.isArray(charts?.timingSplit?.values) ? charts.timingSplit.values.map((v) => Number(v || 0)) : [];
+  const timingTotal = timingValues.reduce((sum, value) => sum + value, 0);
+  const timingMax = timingValues.length ? Math.max(...timingValues) : 0;
+  const topTimes = timingLabels.filter((_, idx) => timingValues[idx] === timingMax && timingMax > 0);
+  const timingSummary = timingTotal === 0
+    ? 'Not enough seizure timing data yet.'
+    : topTimes.length > 1
+      ? `Most logged seizures happened in: ${topTimes.join(', ')}.`
+      : `Most logged seizures happened in the ${String(topTimes[0] || '').toLowerCase()} time window.`;
 
   return (
     <Container>
@@ -455,6 +456,20 @@ export default function Dashboard({ route, navigation }) {
         </ChildCard>
 
         <InsightsSection>
+          <InsightsHeader>Risk Warnings Today</InsightsHeader>
+          <InsightCard full>
+            <InsightTopRow>
+              <InsightIcon name="alert-outline" />
+              <InsightTitle>Based on previous seizure patterns</InsightTitle>
+            </InsightTopRow>
+            {warningInsights.map((item, idx) => (
+              <WarningRow key={`warning-${idx}`}>
+                <WarningDot />
+                <InsightText style={{ flex: 1, marginTop: 0 }}>{item}</InsightText>
+              </WarningRow>
+            ))}
+          </InsightCard>
+
           <InsightsHeader>Epilepsy Insights</InsightsHeader>
           <InsightCard full>
             <InsightTopRow>
@@ -471,7 +486,7 @@ export default function Dashboard({ route, navigation }) {
               <InsightTitle>Timing Pattern</InsightTitle>
             </InsightTopRow>
             <InsightTimingPie data={charts.timingSplit} />
-            <InsightText>{timingInsight === 'Not enough data yet.' ? weeklyInsight : timingInsight}</InsightText>
+            <InsightText>{timingSummary}</InsightText>
           </InsightCard>
         </InsightsSection>
       </ScrollView>
@@ -904,6 +919,21 @@ const InsightText = styled.Text`
   font-size: 12px;
   color: #5f544f;
   line-height: 17px;
+`;
+
+const WarningRow = styled.View`
+  flex-direction: row;
+  align-items: flex-start;
+  margin-top: 10px;
+`;
+
+const WarningDot = styled.View`
+  width: 7px;
+  height: 7px;
+  border-radius: 3.5px;
+  background-color: #b03060;
+  margin-right: 8px;
+  margin-top: 5px;
 `;
 
 const ActionsContainer = styled.View`

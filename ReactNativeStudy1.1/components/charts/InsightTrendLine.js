@@ -13,7 +13,7 @@ export default function InsightTrendLine({ data }) {
     return <EmptyText>Not enough data yet.</EmptyText>;
   }
 
-  const chartWidth = Math.max(220, width - 88);
+  const chartWidth = Math.max(190, width - 132);
 
   return (
     <BarChart
@@ -32,8 +32,15 @@ export default function InsightTrendLine({ data }) {
         color: (opacity = 1) => `rgba(176, 48, 96, ${opacity})`,
         labelColor: (opacity = 1) => `rgba(80, 70, 65, ${opacity})`,
         barPercentage: 0.5,
+        propsForBackgroundLines: {
+          strokeDasharray: '4 6',
+          stroke: '#ead9df',
+        },
       }}
       style={{ marginVertical: 8, borderRadius: 12 }}
+      withHorizontalLabels
+      segments={4}
+      verticalLabelRotation={0}
     />
   );
 }
