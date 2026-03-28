@@ -81,13 +81,16 @@ public class DashboardController {
             return ResponseEntity.ok(response);
         }
 
-        List<String> insights = fetchMlInsights(child.getId());
+        Map<String, Object> mlInsights = fetchMlInsights(child.getId());
+        Object rawInsights = mlInsights.get("insights");
+        List<String> insights = toStringList(rawInsights);
         if (insights.isEmpty()) {
             insights = List.of("Not enough data yet to show smart insights.");
         }
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("insights", insights);
+        response.put("categories", mlInsights.getOrDefault("categories", Map.of()));
         response.put("charts", buildChartData(child));
         return ResponseEntity.ok(response);
     }
@@ -187,27 +190,30 @@ public class DashboardController {
         }
     }
 
-    private List<String> fetchMlInsights(Long childId) {
+    private Map<String, Object> fetchMlInsights(Long childId) {
         try {
             RestTemplate restTemplate = new RestTemplate();
             String url = UriComponentsBuilder.fromHttpUrl(mlBaseUrl + "/insights")
                     .queryParam("childId", childId)
                     .toUriString();
             Map response = restTemplate.getForObject(url, Map.class);
-            if (response == null || !response.containsKey("insights")) {
-                return List.of();
-            }
-            Object raw = response.get("insights");
-            if (raw instanceof List<?> list) {
-                List<String> out = new ArrayList<>();
-                for (Object item : list) {
-                    out.add(String.valueOf(item));
-                }
-                return out;
+            if (response != null) {
+                return response;
             }
         } catch (Exception ignored) {
         }
-        return List.of();
+        return Map.of();
+    }
+
+    private List<String> toStringList(Object raw) {
+        if (!(raw instanceof List<?> list)) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (Object item : list) {
+            out.add(String.valueOf(item));
+        }
+        return out;
     }
 
     private Map<String, Object> buildChartData(Child child) {
