@@ -11,7 +11,8 @@ import InsightTimingPie from '../components/charts/InsightTimingPie';
 export default function Dashboard({ route, navigation }) {
   const { userId } = route.params;
   const [dashboard, setDashboard] = useState(null);
-  const [insights, setInsights] = useState([]);
+  const [categories, setCategories] = useState({});
+  const [selectedInsightTab, setSelectedInsightTab] = useState('sleep');
   const [charts, setCharts] = useState({
     trendSeries: { labels: [], values: [] },
     medicationSplit: { labels: [], values: [] },
@@ -84,7 +85,7 @@ export default function Dashboard({ route, navigation }) {
       const response = await fetch(`${BASE_URL}/api/dashboard/insights/by-user/${userId}`);
       const text = await response.text();
       if (!response.ok) {
-        setInsights([]);
+        setCategories({});
         setCharts({
           trendSeries: { labels: [], values: [] },
           medicationSplit: { labels: [], values: [] },
@@ -93,14 +94,14 @@ export default function Dashboard({ route, navigation }) {
         return;
       }
       const data = text ? JSON.parse(text) : {};
-      setInsights(Array.isArray(data.insights) ? data.insights.slice(0, 4) : []);
+      setCategories(data.categories && typeof data.categories === 'object' ? data.categories : {});
       setCharts(data.charts || {
         trendSeries: { labels: [], values: [] },
         medicationSplit: { labels: [], values: [] },
         timingSplit: { labels: [], values: [] },
       });
     } catch (err) {
-      setInsights([]);
+      setCategories({});
       setCharts({
         trendSeries: { labels: [], values: [] },
         medicationSplit: { labels: [], values: [] },
@@ -283,7 +284,26 @@ export default function Dashboard({ route, navigation }) {
     }
   };
 
-  const warningInsights = insights.length ? insights : ['No strong warning signs found today.'];
+  const insightTabs = [
+    { key: 'sleep', label: 'Sleep', icon: 'weather-night' },
+    { key: 'medication', label: 'Meds', icon: 'pill' },
+    { key: 'bodySignals', label: 'Body', icon: 'heart-pulse' },
+    { key: 'seizurePatterns', label: 'Patterns', icon: 'chart-timeline-variant' },
+  ];
+  const selectedCategory = categories?.[selectedInsightTab] || { status: 'good', messages: ['Not enough data yet to show smart insights.'] };
+  const selectedMessages = Array.isArray(selectedCategory.messages) && selectedCategory.messages.length
+    ? selectedCategory.messages
+    : ['Not enough data yet to show smart insights.'];
+  const getCategoryTone = (status) => {
+    if (status === 'alert') {
+      return { color: '#c62828', bg: '#fdeaea', label: 'High concern', showBadge: true };
+    }
+    if (status === 'watch') {
+      return { color: '#f9a825', bg: '#fff6dd', label: 'Watch', showBadge: true };
+    }
+    return { color: '#2e7d32', bg: '#ebf7ee', label: 'Stable', showBadge: false };
+  };
+  const selectedTone = getCategoryTone(selectedCategory.status);
   const trendLabels = Array.isArray(charts?.trendSeries?.labels) ? charts.trendSeries.labels : [];
   const trendValues = Array.isArray(charts?.trendSeries?.values) ? charts.trendSeries.values.map((v) => Number(v || 0)) : [];
   const trendTotal = trendValues.reduce((sum, value) => sum + value, 0);
@@ -456,15 +476,38 @@ export default function Dashboard({ route, navigation }) {
         </ChildCard>
 
         <InsightsSection>
-          <InsightsHeader>Risk Warnings Today</InsightsHeader>
+          <InsightsHeader>Smart Insights</InsightsHeader>
           <InsightCard full>
-            <InsightTopRow>
-              <InsightIcon name="alert-outline" />
-              <InsightTitle>Based on previous seizure patterns</InsightTitle>
-            </InsightTopRow>
-            {warningInsights.map((item, idx) => (
-              <WarningRow key={`warning-${idx}`}>
-                <WarningDot />
+            <TabRow>
+              {insightTabs.map((tab) => {
+                const tabCategory = categories?.[tab.key] || { status: 'good' };
+                const tabTone = getCategoryTone(tabCategory.status);
+                const active = selectedInsightTab === tab.key;
+
+                return (
+                  <InsightTab
+                    key={tab.key}
+                    active={active}
+                    onPress={() => setSelectedInsightTab(tab.key)}
+                  >
+                    <TabIconWrap>
+                      <TabIcon name={tab.icon} active={active} />
+                      {tabTone.showBadge ? <TabBadge style={{ backgroundColor: tabTone.color }}><TabBadgeText>!</TabBadgeText></TabBadge> : null}
+                    </TabIconWrap>
+                    <TabLabel active={active}>{tab.label}</TabLabel>
+                  </InsightTab>
+                );
+              })}
+            </TabRow>
+
+            <CategoryStatusBar style={{ backgroundColor: selectedTone.bg, borderColor: selectedTone.color }}>
+              <StatusDot style={{ backgroundColor: selectedTone.color }} />
+              <CategoryStatusText style={{ color: selectedTone.color }}>{selectedTone.label}</CategoryStatusText>
+            </CategoryStatusBar>
+
+            {selectedMessages.map((item, idx) => (
+              <WarningRow key={`category-${idx}`}>
+                <WarningDot style={{ backgroundColor: selectedTone.color }} />
                 <InsightText style={{ flex: 1, marginTop: 0 }}>{item}</InsightText>
               </WarningRow>
             ))}
@@ -934,6 +977,77 @@ const WarningDot = styled.View`
   background-color: #b03060;
   margin-right: 8px;
   margin-top: 5px;
+`;
+
+const TabRow = styled.View`
+  flex-direction: row;
+  justify-content: space-between;
+  margin-bottom: 14px;
+`;
+
+const InsightTab = styled.TouchableOpacity`
+  width: 23%;
+  align-items: center;
+  padding: 10px 6px;
+  border-radius: 14px;
+  background-color: ${(p) => (p.active ? '#f8e7ee' : '#f7f0ea')};
+  border-width: 1px;
+  border-color: ${(p) => (p.active ? '#b03060' : '#ead9df')};
+`;
+
+const TabIconWrap = styled.View`
+  position: relative;
+`;
+
+const TabIcon = styled(Icon)`
+  font-size: 22px;
+  color: ${(p) => (p.active ? '#b03060' : '#8b7e76')};
+`;
+
+const TabBadge = styled.View`
+  position: absolute;
+  top: -5px;
+  right: -9px;
+  min-width: 15px;
+  height: 15px;
+  border-radius: 7.5px;
+  align-items: center;
+  justify-content: center;
+  padding-horizontal: 3px;
+`;
+
+const TabBadgeText = styled.Text`
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+`;
+
+const TabLabel = styled.Text`
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: ${(p) => (p.active ? '#b03060' : '#6b5e58')};
+`;
+
+const CategoryStatusBar = styled.View`
+  flex-direction: row;
+  align-items: center;
+  border-width: 1px;
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+`;
+
+const StatusDot = styled.View`
+  width: 9px;
+  height: 9px;
+  border-radius: 4.5px;
+  margin-right: 8px;
+`;
+
+const CategoryStatusText = styled.Text`
+  font-size: 12px;
+  font-weight: 700;
 `;
 
 const ActionsContainer = styled.View`
