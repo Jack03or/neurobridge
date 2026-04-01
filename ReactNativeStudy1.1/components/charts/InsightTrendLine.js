@@ -21,10 +21,12 @@ export default function InsightTrendLine({ data }) {
       width={chartWidth}
       height={170}
       fromZero
+      fromNumber={5}
       withInnerLines
       showValuesOnTopOfBars
       yAxisLabel=""
       yAxisSuffix=""
+      formatYLabel={(value) => String(Math.round(Number(value)))}
       chartConfig={{
         backgroundGradientFrom: '#ffffff',
         backgroundGradientTo: '#ffffff',
@@ -39,7 +41,7 @@ export default function InsightTrendLine({ data }) {
       }}
       style={{ marginVertical: 8, borderRadius: 12 }}
       withHorizontalLabels
-      segments={4}
+      segments={5}
       verticalLabelRotation={0}
     />
   );
