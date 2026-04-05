@@ -111,7 +111,7 @@ export default function LogSeizureSymptoms({ route, navigation }) {
         <ContinueBtn
           disabled={!canContinue}
           onPress={() =>
-            navigation.navigate('LogSeizureDetails', {
+            navigation.navigate('LogSeizureTriggers', {
               userId,
               symptoms: selected,
               symptomsNone,
@@ -130,7 +130,7 @@ export default function LogSeizureSymptoms({ route, navigation }) {
             <ModalTitle>Video demo</ModalTitle>
             <ModalBody>
               Placeholder for: <Bold>{videoModal}</Bold>
-              {'\n\n'}Later you’ll swap this for a real video.
+              {'\n\n'}Later swap this for a real video.
             </ModalBody>
 
             <ModalBtn onPress={() => setVideoModal(null)}>

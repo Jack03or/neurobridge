@@ -58,6 +58,17 @@ export default function SeizureEventView({ route, navigation }) {
         </Card>
 
         <Card>
+          <CardTitle>Potential Triggers</CardTitle>
+          <Line><Label>Selected triggers</Label><Value>{seizure?.seizureTrigger?.trim() ? seizure.seizureTrigger : '--'}</Value></Line>
+          <Line>
+            <Label>Hours since last meal</Label>
+            <Value>
+              {seizure?.hoursSinceLastMeal != null ? `${seizure.hoursSinceLastMeal} hours` : '--'}
+            </Value>
+          </Line>
+        </Card>
+
+        <Card>
           <CardTitle>Notes</CardTitle>
           <Value>{seizure?.notes?.trim() ? seizure.notes : '--'}</Value>
         </Card>

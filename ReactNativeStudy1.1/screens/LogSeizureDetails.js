@@ -5,7 +5,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 export default function LogSeizureDetails({ route, navigation }) {
-  const { userId, symptoms, symptomsNone, awareness } = route.params;
+  const { userId, symptoms, symptomsNone, awareness, potentialTriggers, hoursSinceLastMeal } = route.params;
 
   // timestamp picker ios
   const [timestampDate, setTimestampDate] = useState(new Date());
@@ -202,6 +202,8 @@ export default function LogSeizureDetails({ route, navigation }) {
               symptoms,
               symptomsNone,
               awareness,
+              potentialTriggers,
+              hoursSinceLastMeal,
               timestampIso, //  send this to summary / backend
               durationSeconds,
               patientState,

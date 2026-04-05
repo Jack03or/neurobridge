@@ -14,6 +14,7 @@ import Dashboard from './screens/Dashboard';
 //Log Seizure
 import LogSeizureSymptoms from './screens/LogSeizureSymptoms';
 import LogSeizureDetails from './screens/LogSeizureDetails';
+import LogSeizureTriggers from './screens/LogSeizureTriggers';
 import SeizureSummary from './screens/SeizureSummary';
 
 //Diary
@@ -99,6 +100,7 @@ export default function App() {
 
         {/* Log Seizure */}
         <Stack.Screen name="LogSeizureDetails" component={LogSeizureDetails} />
+        <Stack.Screen name="LogSeizureTriggers" component={LogSeizureTriggers} />
         <Stack.Screen name="SeizureSummary" component={SeizureSummary} />
 
         {/* Seizure Diary */}

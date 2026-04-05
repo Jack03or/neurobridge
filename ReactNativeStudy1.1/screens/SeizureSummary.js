@@ -23,6 +23,8 @@ export default function SeizureSummary({ route, navigation }) {
         tongueBite: payload.tongueBite,
         activityState: payload.activityState,
         incontinence: payload.incontinence,
+        potentialTriggers: payload.potentialTriggers,
+        hoursSinceLastMeal: payload.hoursSinceLastMeal,
         notes: payload.notes,
       };
 
@@ -101,6 +103,18 @@ export default function SeizureSummary({ route, navigation }) {
           <Line><Label>Tongue bite</Label><Value>{payload.tongueBite ? 'Yes' : 'No'}</Value></Line>
           <Line><Label>Activity</Label><Value>{payload.activityState}</Value></Line>
           <Line><Label>Incontinence</Label><Value>{payload.incontinence ? 'Yes' : 'No'}</Value></Line>
+        </Card>
+
+        <Card>
+          <CardTitle>Potential Triggers</CardTitle>
+          <Line>
+            <Label>Selected triggers</Label>
+            <Value>{Array.isArray(payload.potentialTriggers) && payload.potentialTriggers.length ? payload.potentialTriggers.join(', ') : '--'}</Value>
+          </Line>
+          <Line>
+            <Label>Hours since last meal</Label>
+            <Value>{payload.hoursSinceLastMeal != null ? `${payload.hoursSinceLastMeal} hours` : '--'}</Value>
+          </Line>
         </Card>
 
         <Card>
