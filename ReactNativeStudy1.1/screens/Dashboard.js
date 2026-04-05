@@ -5,6 +5,7 @@ import styled from 'styled-components/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { BASE_URL } from '../config';
+import InsightSleepSeizureLine from '../components/charts/InsightSleepSeizureLine';
 import InsightTrendLine from '../components/charts/InsightTrendLine';
 import InsightTimingPie from '../components/charts/InsightTimingPie';
 
@@ -13,10 +14,14 @@ export default function Dashboard({ route, navigation }) {
   const [dashboard, setDashboard] = useState(null);
   const [categories, setCategories] = useState({});
   const [selectedInsightTab, setSelectedInsightTab] = useState('sleep');
+  const [selectedChartTab, setSelectedChartTab] = useState('trend');
+  const [selectedSecondaryChartTab, setSelectedSecondaryChartTab] = useState('timing');
   const [charts, setCharts] = useState({
     trendSeries: { labels: [], values: [] },
     medicationSplit: { labels: [], values: [] },
     timingSplit: { labels: [], values: [] },
+    medicationHeatmap: { days: [], summary: 'Not enough medication data yet.' },
+    sleepSeizureSeries: { labels: [], sleepValues: [], seizureMarkers: [], seizureCounts: [] },
   });
   const [loading, setLoading] = useState(true);
   const [schedules, setSchedules] = useState([]);
@@ -26,6 +31,13 @@ export default function Dashboard({ route, navigation }) {
   const [showMedicationModal, setShowMedicationModal] = useState(false);
   const [refreshingRisk, setRefreshingRisk] = useState(false);
   const [fitbitBusy, setFitbitBusy] = useState(false);
+  const emptyCharts = {
+    trendSeries: { labels: [], values: [] },
+    medicationSplit: { labels: [], values: [] },
+    timingSplit: { labels: [], values: [] },
+    medicationHeatmap: { days: [], summary: 'Not enough medication data yet.' },
+    sleepSeizureSeries: { labels: [], sleepValues: [], seizureMarkers: [], seizureCounts: [] },
+  };
 
   const maybeShowMedicationReminder = (data) => {
     if (!data?.hasChild || data?.medicationTakenToday) return;
@@ -86,27 +98,15 @@ export default function Dashboard({ route, navigation }) {
       const text = await response.text();
       if (!response.ok) {
         setCategories({});
-        setCharts({
-          trendSeries: { labels: [], values: [] },
-          medicationSplit: { labels: [], values: [] },
-          timingSplit: { labels: [], values: [] },
-        });
+        setCharts(emptyCharts);
         return;
       }
       const data = text ? JSON.parse(text) : {};
       setCategories(data.categories && typeof data.categories === 'object' ? data.categories : {});
-      setCharts(data.charts || {
-        trendSeries: { labels: [], values: [] },
-        medicationSplit: { labels: [], values: [] },
-        timingSplit: { labels: [], values: [] },
-      });
+      setCharts({ ...emptyCharts, ...(data.charts || {}) });
     } catch (err) {
       setCategories({});
-      setCharts({
-        trendSeries: { labels: [], values: [] },
-        medicationSplit: { labels: [], values: [] },
-        timingSplit: { labels: [], values: [] },
-      });
+      setCharts(emptyCharts);
     }
   };
 
@@ -324,6 +324,42 @@ export default function Dashboard({ route, navigation }) {
     : topTimes.length > 1
       ? `Most logged seizures happened in: ${topTimes.join(', ')}.`
       : `Most logged seizures happened in the ${String(topTimes[0] || '').toLowerCase()} time window.`;
+  const sleepPatternLabels = Array.isArray(charts?.sleepSeizureSeries?.labels) ? charts.sleepSeizureSeries.labels : [];
+  const sleepPatternValues = Array.isArray(charts?.sleepSeizureSeries?.sleepValues)
+    ? charts.sleepSeizureSeries.sleepValues.map((v) => Number(v || 0))
+    : [];
+  const sleepPatternSeizures = Array.isArray(charts?.sleepSeizureSeries?.seizureCounts)
+    ? charts.sleepSeizureSeries.seizureCounts.map((v) => Number(v || 0))
+    : [];
+  const sleepPatternDays = sleepPatternLabels.filter((_, idx) => sleepPatternSeizures[idx] > 0 && sleepPatternValues[idx] > 0);
+  const lowSleepSeizureDays = sleepPatternLabels.filter((_, idx) => sleepPatternSeizures[idx] > 0 && sleepPatternValues[idx] > 0 && sleepPatternValues[idx] < 6);
+  const sleepPatternSummary = sleepPatternDays.length === 0
+    ? 'No recent seizure days line up with the sleep trend yet.'
+    : lowSleepSeizureDays.length > 0
+      ? `Seizures this week lined up with lower-sleep days, especially ${lowSleepSeizureDays.join(', ')}.`
+      : `Dots mark seizure days against the sleep trend this week.`;
+  const heatmapDays = Array.isArray(charts?.medicationHeatmap?.days) ? charts.medicationHeatmap.days : [];
+  const heatmapSummary = charts?.medicationHeatmap?.summary || 'Not enough medication data yet.';
+  const getHeatmapTone = (status) => {
+    if (status === 'taken') {
+      return { bg: '#87c38f', text: '#ffffff', border: '#6aa572' };
+    }
+    if (status === 'late') {
+      return { bg: '#f7c768', text: '#6b4d00', border: '#e2af46' };
+    }
+    if (status === 'missed') {
+      return { bg: '#e997aa', text: '#ffffff', border: '#d97b93' };
+    }
+    return { bg: '#f3ebe5', text: '#9b8e86', border: '#ead9df' };
+  };
+  const chartTabs = [
+    { key: 'trend', label: 'Seizure Trend' },
+    { key: 'heatmap', label: 'Medication Heatmap' },
+  ];
+  const secondaryChartTabs = [
+    { key: 'timing', label: 'Timing Pattern' },
+    { key: 'sleepSeizure', label: 'Sleep + Seizures' },
+  ];
 
   return (
     <Container>
@@ -385,21 +421,24 @@ export default function Dashboard({ route, navigation }) {
                 <SummaryItem>
                   <SummaryLabel>Medication</SummaryLabel>
                   <MedicationStatusButton onPress={handleMedicationTap}>
-                  <MedicationStatus>
-                    {dashboard.medicationTakenToday ? (
-                      <>
-                        <MedicationIcon name="check-circle-outline" />
-                        <MedicationText>Taken today</MedicationText>
-                      </>
-                    ) : (
-                      <>
-                        <MedicationIcon name="close-circle-outline" />
-                        <MedicationText>
-                          {dashboard.medicationStatusText || 'Not logged'}
-                        </MedicationText>
-                      </>
-                    )}
-                  </MedicationStatus>
+                    <MedicationStatus>
+                      {dashboard.medicationTakenToday ? (
+                        <>
+                          <MedicationIcon name="check-circle-outline" />
+                          <MedicationText>Taken today</MedicationText>
+                        </>
+                      ) : (
+                        <>
+                          <MedicationIcon name="close-circle-outline" />
+                          <MedicationText>
+                            {dashboard.medicationStatusText || 'Not logged'}
+                          </MedicationText>
+                        </>
+                      )}
+                    </MedicationStatus>
+                    <MedicationSubtext>
+                      Scheduled: {dashboard.scheduledMedicationTime || '--'}
+                    </MedicationSubtext>
                   </MedicationStatusButton>
                 </SummaryItem>
               </SummaryRow>
@@ -516,20 +555,89 @@ export default function Dashboard({ route, navigation }) {
           <InsightsHeader>Epilepsy Insights</InsightsHeader>
           <InsightCard full>
             <InsightTopRow>
-              <InsightIcon name="chart-line" />
-              <InsightTitle>Trend Pattern</InsightTitle>
+              <InsightIcon name={selectedChartTab === 'trend' ? 'chart-line' : 'calendar-month-outline'} />
+              <InsightTitle>{selectedChartTab === 'trend' ? 'Trend Pattern' : 'Medication Heatmap'}</InsightTitle>
             </InsightTopRow>
-            <InsightTrendLine data={charts.trendSeries} />
-            <InsightText>{trendSummary}</InsightText>
+            <ChartTabRow>
+              {chartTabs.map((tab) => (
+                <ChartTabButton
+                  key={tab.key}
+                  active={selectedChartTab === tab.key}
+                  onPress={() => setSelectedChartTab(tab.key)}
+                >
+                  <ChartTabText active={selectedChartTab === tab.key}>{tab.label}</ChartTabText>
+                </ChartTabButton>
+              ))}
+            </ChartTabRow>
+
+            {selectedChartTab === 'trend' ? (
+              <>
+                <InsightTrendLine data={charts.trendSeries} />
+                <InsightText>{trendSummary}</InsightText>
+              </>
+            ) : (
+              <>
+                <HeatmapGrid>
+                  {heatmapDays.map((item) => {
+                    const tone = getHeatmapTone(item.status);
+                    return (
+                      <HeatmapCellWrap key={item.date}>
+                        <HeatmapCell style={{ backgroundColor: tone.bg, borderColor: tone.border }}>
+                          <HeatmapCellText style={{ color: tone.text }}>{item.day}</HeatmapCellText>
+                        </HeatmapCell>
+                        <HeatmapDayLabel>{item.label}</HeatmapDayLabel>
+                      </HeatmapCellWrap>
+                    );
+                  })}
+                </HeatmapGrid>
+                <HeatmapLegendRow>
+                  <LegendItem>
+                    <LegendSwatch style={{ backgroundColor: '#87c38f' }} />
+                    <LegendText>Taken</LegendText>
+                  </LegendItem>
+                  <LegendItem>
+                    <LegendSwatch style={{ backgroundColor: '#f7c768' }} />
+                    <LegendText>Late</LegendText>
+                  </LegendItem>
+                  <LegendItem>
+                    <LegendSwatch style={{ backgroundColor: '#e997aa' }} />
+                    <LegendText>Missed</LegendText>
+                  </LegendItem>
+                </HeatmapLegendRow>
+                <InsightText>{heatmapSummary}</InsightText>
+              </>
+            )}
           </InsightCard>
 
           <InsightCard full>
             <InsightTopRow>
-              <InsightIcon name="clock-outline" />
-              <InsightTitle>Timing Pattern</InsightTitle>
+              <InsightIcon name={selectedSecondaryChartTab === 'timing' ? 'clock-outline' : 'sleep'} />
+              <InsightTitle>{selectedSecondaryChartTab === 'timing' ? 'Timing Pattern' : 'Sleep + Seizures'}</InsightTitle>
             </InsightTopRow>
-            <InsightTimingPie data={charts.timingSplit} />
-            <InsightText>{timingSummary}</InsightText>
+            <ChartTabRow>
+              {secondaryChartTabs.map((tab, idx) => (
+                <ChartTabButton
+                  key={tab.key}
+                  active={selectedSecondaryChartTab === tab.key}
+                  isLast={idx === secondaryChartTabs.length - 1}
+                  onPress={() => setSelectedSecondaryChartTab(tab.key)}
+                >
+                  <ChartTabText active={selectedSecondaryChartTab === tab.key}>{tab.label}</ChartTabText>
+                </ChartTabButton>
+              ))}
+            </ChartTabRow>
+
+            {selectedSecondaryChartTab === 'timing' ? (
+              <>
+                <InsightTimingPie data={charts.timingSplit} />
+                <InsightText>{timingSummary}</InsightText>
+              </>
+            ) : (
+              <>
+                <InsightSleepSeizureLine data={charts.sleepSeizureSeries} />
+                <InsightText>{sleepPatternSummary}</InsightText>
+              </>
+            )}
           </InsightCard>
         </InsightsSection>
       </ScrollView>
@@ -783,6 +891,12 @@ const MedicationText = styled.Text`
   color: #2f2f2f;
 `;
 
+const MedicationSubtext = styled.Text`
+  margin-top: 4px;
+  font-size: 11px;
+  color: #8b7e76;
+`;
+
 const DeviceRow = styled.View`
   margin-top: 8px;
   flex-direction: row;
@@ -962,6 +1076,87 @@ const InsightText = styled.Text`
   font-size: 12px;
   color: #5f544f;
   line-height: 17px;
+`;
+
+const ChartTabRow = styled.View`
+  flex-direction: row;
+  margin-top: 12px;
+  margin-bottom: 8px;
+`;
+
+const ChartTabButton = styled.TouchableOpacity`
+  flex: 1;
+  padding: 10px 8px;
+  border-radius: 12px;
+  border-width: 1px;
+  border-color: ${(p) => (p.active ? '#b03060' : '#ead9df')};
+  background-color: ${(p) => (p.active ? '#f8e7ee' : '#f7f0ea')};
+  margin-right: ${(p) => (p.isLast ? '0px' : '8px')};
+`;
+
+const ChartTabText = styled.Text`
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: ${(p) => (p.active ? '#b03060' : '#6b5e58')};
+`;
+
+const HeatmapGrid = styled.View`
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-top: 4px;
+`;
+
+const HeatmapCellWrap = styled.View`
+  width: 18%;
+  align-items: center;
+  margin-bottom: 12px;
+`;
+
+const HeatmapCell = styled.View`
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  border-width: 1px;
+  align-items: center;
+  justify-content: center;
+`;
+
+const HeatmapCellText = styled.Text`
+  font-size: 13px;
+  font-weight: 700;
+`;
+
+const HeatmapDayLabel = styled.Text`
+  margin-top: 4px;
+  font-size: 10px;
+  color: #8b7e76;
+`;
+
+const HeatmapLegendRow = styled.View`
+  flex-direction: row;
+  flex-wrap: wrap;
+  margin-top: 4px;
+`;
+
+const LegendItem = styled.View`
+  flex-direction: row;
+  align-items: center;
+  margin-right: 14px;
+  margin-bottom: 4px;
+`;
+
+const LegendSwatch = styled.View`
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  margin-right: 6px;
+`;
+
+const LegendText = styled.Text`
+  font-size: 11px;
+  color: #6b5e58;
 `;
 
 const WarningRow = styled.View`
