@@ -60,6 +60,9 @@ public class SeizureLog {
     @Column(name = "seizure_trigger", length = 255)
     private String seizureTrigger;
 
+    @Column(name = "hours_since_last_meal")
+    private Integer hoursSinceLastMeal;
+
     @Column(name = "post_effects", length = 255)
     private String postEffects;
 
@@ -107,6 +110,9 @@ public class SeizureLog {
 
     public String getSeizureTrigger() { return seizureTrigger; }
     public void setSeizureTrigger(String seizureTrigger) { this.seizureTrigger = seizureTrigger; }
+
+    public Integer getHoursSinceLastMeal() { return hoursSinceLastMeal; }
+    public void setHoursSinceLastMeal(Integer hoursSinceLastMeal) { this.hoursSinceLastMeal = hoursSinceLastMeal; }
 
     public String getPostEffects() { return postEffects; }
     public void setPostEffects(String postEffects) { this.postEffects = postEffects; }

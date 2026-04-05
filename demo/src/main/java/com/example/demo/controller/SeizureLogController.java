@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/seizures")
@@ -59,8 +60,16 @@ public class SeizureLogController {
         log.setActivityState(req.activityState);
         log.setIncontinence(req.incontinence);
 
-        //  renamed from trigger -> seizureTrigger cus of db reserved word
-        log.setSeizureTrigger(req.seizureTrigger);
+        if (req.potentialTriggers != null && !req.potentialTriggers.isEmpty()) {
+            String triggerCsv = req.potentialTriggers.stream()
+                    .filter(item -> item != null && !item.isBlank())
+                    .collect(Collectors.joining(", "));
+            log.setSeizureTrigger(triggerCsv.isBlank() ? null : triggerCsv);
+        } else {
+            log.setSeizureTrigger(req.seizureTrigger);
+        }
+
+        log.setHoursSinceLastMeal(req.hoursSinceLastMeal);
 
         log.setPostEffects(req.postEffects);
         log.setNotes(req.notes);
@@ -130,6 +139,8 @@ public class SeizureLogController {
 
         // renamed from trigger -> seizureTrigger cus of db reserved word
         public String seizureTrigger;
+        public List<String> potentialTriggers;
+        public Integer hoursSinceLastMeal;
 
         public String postEffects;
         public String notes;
