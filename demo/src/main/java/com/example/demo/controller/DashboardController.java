@@ -3,10 +3,13 @@ package com.example.demo.controller;
 import com.example.demo.model.Child;
 import com.example.demo.model.FitBitMetrics;
 import com.example.demo.model.MedicationLog;
+import com.example.demo.model.MedicationSchedule;
 import com.example.demo.model.SeizureLog;
 import com.example.demo.model.User;
 import com.example.demo.repository.ChildRepository;
+import com.example.demo.repository.FitBitMetricsRepository;
 import com.example.demo.repository.MedicationLogRepository;
+import com.example.demo.repository.MedicationScheduleRepository;
 import com.example.demo.repository.SeizureLogRepository;
 import com.example.demo.repository.UserRepository;
 import com.example.demo.service.FitbitOAuthService;
@@ -21,7 +24,9 @@ import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -36,6 +41,8 @@ import java.util.stream.Collectors;
 @CrossOrigin(origins = "*")
 public class DashboardController {
 
+    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("h:mm a");
+
     @Autowired
     private UserRepository userRepository;
 
@@ -46,10 +53,16 @@ public class DashboardController {
     private FitbitService fitbitService;
 
     @Autowired
+    private FitBitMetricsRepository fitBitMetricsRepository;
+
+    @Autowired
     private SeizureLogRepository seizureLogRepository;
 
     @Autowired
     private MedicationLogRepository medicationLogRepository;
+
+    @Autowired
+    private MedicationScheduleRepository medicationScheduleRepository;
 
     @Autowired
     private FitbitOAuthService fitbitOAuthService;
@@ -124,6 +137,7 @@ public class DashboardController {
         response.setGender(child.getGender());
         response.setDisability(child.getDisability());
         response.setDob(child.getDob());
+        applyMedicationSchedule(child, response);
 
         FitBitMetrics metrics = forceRefreshRisk
                 ? fitbitService.refreshTodayRisk(child)
@@ -188,6 +202,17 @@ public class DashboardController {
         } else {
             response.setLastSeizureText(daysAgo + " days ago");
         }
+    }
+
+    private void applyMedicationSchedule(Child child, DashboardResponse response) {
+        List<MedicationSchedule> schedules = medicationScheduleRepository.findByChildAndActiveTrueOrderByCreatedAtAsc(child);
+        if (schedules.isEmpty()) {
+            response.setScheduledMedicationTime(null);
+            return;
+        }
+
+        LocalTime defaultTime = schedules.get(0).getDefaultTime();
+        response.setScheduledMedicationTime(defaultTime == null ? null : defaultTime.format(TIME_FORMATTER));
     }
 
     private Map<String, Object> fetchMlInsights(Long childId) {
@@ -265,6 +290,7 @@ public class DashboardController {
         timingSplit.put("labels", new ArrayList<>(timingBuckets.keySet()));
         timingSplit.put("values", new ArrayList<>(timingBuckets.values()));
         charts.put("timingSplit", timingSplit);
+        charts.put("sleepSeizureSeries", buildSleepSeizureSeries(child, trendStart, today, trendByDate));
 
         int taken = 0;
         int missed = 0;
@@ -290,7 +316,150 @@ public class DashboardController {
         medicationSplit.put("values", Arrays.asList(taken, missed));
         charts.put("medicationSplit", medicationSplit);
 
+        charts.put("medicationHeatmap", buildMedicationHeatmap(child));
+
         return charts;
+    }
+
+    private Map<String, Object> buildSleepSeizureSeries(Child child, LocalDate start, LocalDate end, Map<LocalDate, Long> trendByDate) {
+        Map<String, Object> series = new LinkedHashMap<>();
+        List<FitBitMetrics> metrics = fitBitMetricsRepository.findByChildAndDateBetweenOrderByDateAsc(child, start, end);
+        Map<LocalDate, FitBitMetrics> metricsByDate = metrics.stream()
+                .collect(Collectors.toMap(FitBitMetrics::getDate, m -> m, (first, second) -> second, LinkedHashMap::new));
+
+        List<String> labels = new ArrayList<>();
+        List<Double> sleepValues = new ArrayList<>();
+        List<Double> seizureMarkers = new ArrayList<>();
+        List<Integer> seizureCounts = new ArrayList<>();
+
+        for (int i = 0; i < 7; i++) {
+            LocalDate day = start.plusDays(i);
+            FitBitMetrics metric = metricsByDate.get(day);
+            double sleepHours = metric != null && metric.getSleepHours() != null ? metric.getSleepHours() : 0.0;
+            int seizureCount = trendByDate.getOrDefault(day, 0L).intValue();
+
+            labels.add(day.getDayOfWeek().name().substring(0, 3));
+            sleepValues.add(sleepHours);
+            seizureMarkers.add(seizureCount > 0 ? sleepHours : null);
+            seizureCounts.add(seizureCount);
+        }
+
+        series.put("labels", labels);
+        series.put("sleepValues", sleepValues);
+        series.put("seizureMarkers", seizureMarkers);
+        series.put("seizureCounts", seizureCounts);
+        return series;
+    }
+
+    private Map<String, Object> buildMedicationHeatmap(Child child) {
+        Map<String, Object> heatmap = new LinkedHashMap<>();
+        List<Map<String, Object>> days = new ArrayList<>();
+
+        LocalDate today = LocalDate.now();
+        LocalDate start = today.minusDays(9);
+
+        List<MedicationSchedule> schedules = medicationScheduleRepository.findByChildAndActiveTrueOrderByCreatedAtAsc(child);
+        LocalTime scheduledTime = schedules.isEmpty() ? null : schedules.get(0).getDefaultTime();
+
+        Map<LocalDate, List<MedicationLog>> logsByDate = medicationLogRepository
+                .findByChildAndDateBetweenOrderByDateDesc(child, start, today)
+                .stream()
+                .collect(Collectors.groupingBy(MedicationLog::getDate, HashMap::new, Collectors.toList()));
+
+        int takenStreak = 0;
+        int recentMissed = 0;
+        int recentLate = 0;
+
+        for (int i = 0; i < 10; i++) {
+            LocalDate day = start.plusDays(i);
+            List<MedicationLog> dayLogs = logsByDate.getOrDefault(day, List.of());
+            String status = resolveMedicationDayStatus(dayLogs, scheduledTime);
+
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("date", day.toString());
+            item.put("label", day.getDayOfWeek().name().substring(0, 3));
+            item.put("day", day.getDayOfMonth());
+            item.put("status", status);
+            days.add(item);
+
+            if ("missed".equals(status)) {
+                recentMissed++;
+            } else if ("late".equals(status)) {
+                recentLate++;
+            }
+        }
+
+        for (int i = days.size() - 1; i >= 0; i--) {
+            String status = String.valueOf(days.get(i).get("status"));
+            if ("taken".equals(status)) {
+                takenStreak++;
+            } else {
+                break;
+            }
+        }
+
+        heatmap.put("days", days);
+        heatmap.put("summary", buildMedicationHeatmapSummary(days, takenStreak, recentMissed, recentLate));
+        return heatmap;
+    }
+
+    private String resolveMedicationDayStatus(List<MedicationLog> dayLogs, LocalTime scheduledTime) {
+        if (dayLogs == null || dayLogs.isEmpty()) {
+            return "none";
+        }
+
+        boolean anyTaken = dayLogs.stream().anyMatch(MedicationLog::isTaken);
+        boolean anyMissed = dayLogs.stream().anyMatch(log -> !log.isTaken());
+
+        if (!anyTaken) {
+            return anyMissed ? "missed" : "none";
+        }
+
+        if (scheduledTime == null) {
+            return "taken";
+        }
+
+        boolean anyLate = dayLogs.stream()
+                .filter(MedicationLog::isTaken)
+                .map(MedicationLog::getTakenAt)
+                .filter(time -> time != null)
+                .anyMatch(time -> time.toLocalTime().isAfter(scheduledTime.plusMinutes(30)));
+
+        return anyLate ? "late" : "taken";
+    }
+
+    private String buildMedicationHeatmapSummary(List<Map<String, Object>> days, int takenStreak, int recentMissed, int recentLate) {
+        if (days.isEmpty()) {
+            return "Not enough medication data yet.";
+        }
+
+        String latestStatus = String.valueOf(days.get(days.size() - 1).get("status"));
+
+        if ("missed".equals(latestStatus)) {
+            return "Medication was missed today. Try to get back on track today.";
+        }
+
+        if ("late".equals(latestStatus)) {
+            return "Medication was late today. Try to keep close to the usual time.";
+        }
+
+        if (takenStreak >= 3) {
+            return "On a " + takenStreak + " day medication streak. Keep it up.";
+        }
+
+        if (recentMissed >= 2) {
+            return "Medication has been missed a few times recently.";
+        }
+
+        if (recentLate >= 2) {
+            return "Medication has been late a few times recently.";
+        }
+
+        if ("taken".equals(latestStatus)) {
+            return "Medication has been on track recently.";
+        }
+
+        return "Not enough medication data yet.";
     }
 
     // DTO for dashboard response
@@ -308,6 +477,7 @@ public class DashboardController {
         private String lastSeizureText;
         private boolean medicationTakenToday;
         private String medicationStatusText;
+        private String scheduledMedicationTime;
         private String fitbitStatusText;
 
         private Double sleepHours;
@@ -347,6 +517,9 @@ public class DashboardController {
 
         public String getMedicationStatusText() { return medicationStatusText; }
         public void setMedicationStatusText(String medicationStatusText) { this.medicationStatusText = medicationStatusText; }
+
+        public String getScheduledMedicationTime() { return scheduledMedicationTime; }
+        public void setScheduledMedicationTime(String scheduledMedicationTime) { this.scheduledMedicationTime = scheduledMedicationTime; }
 
         public String getFitbitStatusText() { return fitbitStatusText; }
         public void setFitbitStatusText(String fitbitStatusText) { this.fitbitStatusText = fitbitStatusText; }
