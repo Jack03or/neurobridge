@@ -39,7 +39,7 @@ public class MedicationLogController {
         User user = userRepository.findById(userId).orElse(null);
         if (user == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
 
-        Child child = childRepository.findByUserId(userId).orElse(null);
+        Child child = resolveChild(userId);
         if (child == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("No child linked to this user");
 
         if (req.date == null) return ResponseEntity.badRequest().body("date is required");
@@ -75,7 +75,7 @@ public class MedicationLogController {
         User user = userRepository.findById(userId).orElse(null);
         if (user == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
 
-        Child child = childRepository.findByUserId(userId).orElse(null);
+        Child child = resolveChild(userId);
         if (child == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("No child linked to this user");
         if (req.scheduleId == null) return ResponseEntity.badRequest().body("scheduleId is required");
 
@@ -87,9 +87,10 @@ public class MedicationLogController {
         LocalDate date = req.date == null ? LocalDate.now() : req.date;
         LocalDateTime takenAt = req.takenAt == null ? LocalDateTime.now() : req.takenAt;
 
-        MedicationLog log = medicationLogRepository
-                .findByChildAndDateAndSchedule(child, date, schedule)
-                .orElseGet(MedicationLog::new);
+        List<MedicationLog> existingLogs = medicationLogRepository
+                .findByChildAndDateAndScheduleOrderByTakenAtDescIdDesc(child, date, schedule);
+
+        MedicationLog log = existingLogs.isEmpty() ? new MedicationLog() : existingLogs.get(0);
 
         log.setChild(child);
         log.setSchedule(schedule);
@@ -111,7 +112,7 @@ public class MedicationLogController {
         User user = userRepository.findById(userId).orElse(null);
         if (user == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
 
-        Child child = childRepository.findByUserId(userId).orElse(null);
+        Child child = resolveChild(userId);
         if (child == null) return ResponseEntity.ok(List.of());
 
         if (from != null && to != null) {
@@ -144,5 +145,14 @@ public class MedicationLogController {
         public LocalDate date;
         public LocalDateTime takenAt;
     }
-}
 
+    private Child resolveChild(Long userId) {
+        if (userId == null) {
+            return null;
+        }
+
+        return childRepository.findAllByUserIdOrderByCreatedAtDescIdDesc(userId).stream()
+                .findFirst()
+                .orElse(null);
+    }
+}

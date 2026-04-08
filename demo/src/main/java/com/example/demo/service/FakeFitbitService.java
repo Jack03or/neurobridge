@@ -52,11 +52,12 @@ public class FakeFitbitService implements FitbitService {
     public FitBitMetrics getOrCreateTodayMetrics(Child child) {
         LocalDate today = LocalDate.now();
 
-        Optional<FitBitMetrics> existing = metricsRepository.findByChildAndDate(child, today);
+        List<FitBitMetrics> existingRows = metricsRepository.findByChildAndDateOrderByCreatedAtDescIdDesc(child, today);
+        existingRows = collapseDuplicateDailyMetrics(existingRows);
 
         FitBitMetrics metrics;
-        if (existing.isPresent()) {
-            metrics = existing.get();
+        if (!existingRows.isEmpty()) {
+            metrics = existingRows.get(0);
             if (fitbitOAuthService.hasConnection(child)) {
                 boolean updated = tryPopulateFromFitbit(metrics, child);
                 if (updated) {
@@ -98,6 +99,17 @@ public class FakeFitbitService implements FitbitService {
         FitBitMetrics metrics = getOrCreateTodayMetrics(child);
         applyDailyRiskFromPython(metrics, child);
         return metricsRepository.save(metrics);
+    }
+
+    private List<FitBitMetrics> collapseDuplicateDailyMetrics(List<FitBitMetrics> rows) {
+        if (rows == null || rows.size() <= 1) {
+            return rows == null ? List.of() : rows;
+        }
+
+        FitBitMetrics keeper = rows.get(0);
+        List<FitBitMetrics> duplicates = rows.subList(1, rows.size());
+        metricsRepository.deleteAll(duplicates);
+        return List.of(keeper);
     }
 
     private void applyDailyRiskFromPython(FitBitMetrics metrics, Child child) {
@@ -190,6 +202,10 @@ public class FakeFitbitService implements FitbitService {
             Integer latestHr = parseLatestHeartRate(hrJson);
             LocalDateTime latestHrAt = parseLatestHeartRateAt(hrJson, day);
             Double hrv = parseHrv(hrvJson);
+
+            System.out.println("Fitbit heart raw for child " + child.getId() + ": " + hrJson);
+            System.out.println("Fitbit heart parsed for child " + child.getId()
+                    + ": rate=" + latestHr + ", at=" + latestHrAt);
 
             boolean hasAny = false;
             if (sleepHours != null) {

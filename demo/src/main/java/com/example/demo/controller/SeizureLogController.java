@@ -32,7 +32,7 @@ public class SeizureLogController {
         User user = userRepository.findById(userId).orElse(null);
         if (user == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
 
-        Child child = childRepository.findByUserId(userId).orElse(null);
+        Child child = resolveChild(userId);
         if (child == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("No child linked to this user");
 
         if (req.timestamp == null) return ResponseEntity.badRequest().body("timestamp is required");
@@ -85,7 +85,7 @@ public class SeizureLogController {
         User user = userRepository.findById(userId).orElse(null);
         if (user == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
 
-        Child child = childRepository.findByUserId(userId).orElse(null);
+        Child child = resolveChild(userId);
         if (child == null) return ResponseEntity.ok(List.of());
 
         return ResponseEntity.ok(seizureLogRepository.findByChildOrderByTimestampDesc(child));
@@ -98,7 +98,7 @@ public class SeizureLogController {
         User user = userRepository.findById(userId).orElse(null);
         if (user == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
 
-        Child child = childRepository.findByUserId(userId).orElse(null);
+        Child child = resolveChild(userId);
         if (child == null) return ResponseEntity.ok(null);
 
         Optional<SeizureLog> latest = seizureLogRepository.findFirstByChildOrderByTimestampDesc(child);
@@ -144,5 +144,15 @@ public class SeizureLogController {
 
         public String postEffects;
         public String notes;
+    }
+
+    private Child resolveChild(Long userId) {
+        if (userId == null) {
+            return null;
+        }
+
+        return childRepository.findAllByUserIdOrderByCreatedAtDescIdDesc(userId).stream()
+                .findFirst()
+                .orElse(null);
     }
 }

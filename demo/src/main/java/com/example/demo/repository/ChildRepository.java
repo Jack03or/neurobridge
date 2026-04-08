@@ -12,5 +12,6 @@ import java.util.Optional;
 public interface ChildRepository extends JpaRepository<Child, Long> {
     // This allows us to find children that belong to a specific user
     List<Child> findByUser(User user);
+    List<Child> findAllByUserIdOrderByCreatedAtDescIdDesc(Long userId);
     Optional<Child> findByUserId(Long userId);
 }

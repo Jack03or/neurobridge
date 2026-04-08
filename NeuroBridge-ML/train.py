@@ -487,6 +487,24 @@ def train_model(events: pd.DataFrame, out_model: Path, out_metrics: Path) -> Non
     out_metrics.write_text(json.dumps(metrics, indent=2))
 
 
+def write_insight_files(events: pd.DataFrame, out_insights: Path, out_insights_by_child: Path) -> None:
+    out_insights.write_text(json.dumps(compute_insights(events), indent=2))
+    out_insights_by_child.write_text(json.dumps(compute_insights_by_child(events), indent=2))
+
+
+def refresh_insights_only(
+    out_insights: Path | None = None,
+    out_insights_by_child: Path | None = None,
+) -> pd.DataFrame:
+    seizure_df, meds_df, fitbit_df, schedules_df = load_tables()
+    events = build_feature_rows(seizure_df, meds_df, fitbit_df, schedules_df)
+
+    out_insights = out_insights or Path("insights.json")
+    out_insights_by_child = out_insights_by_child or Path("insights_by_child.json")
+    write_insight_files(events, out_insights, out_insights_by_child)
+    return events
+
+
 def main() -> None:
     print("Loading data from MySQL...")
     seizure_df, meds_df, fitbit_df, schedules_df = load_tables()
@@ -501,8 +519,7 @@ def main() -> None:
 
     print("Training model...")
     train_model(events, out_model, out_metrics)
-    out_insights.write_text(json.dumps(compute_insights(events), indent=2))
-    out_insights_by_child.write_text(json.dumps(compute_insights_by_child(events), indent=2))
+    write_insight_files(events, out_insights, out_insights_by_child)
 
     print(f"Saved model -> {out_model.resolve()}")
     print(f"Saved metrics -> {out_metrics.resolve()}")

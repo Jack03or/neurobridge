@@ -80,6 +80,36 @@ public class DashboardController {
         return buildDashboardForUser(userId, true);
     }
 
+    @PostMapping("/refresh-insights/by-user/{userId}")
+    public ResponseEntity<?> refreshInsightsForUser(@PathVariable Long userId) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
+        }
+
+        Child child = resolveChild(userId);
+        if (child == null) {
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("insights", List.of("Not enough data yet to show smart insights."));
+            response.put("categories", Map.of());
+            response.put("charts", Map.of());
+            return ResponseEntity.ok(response);
+        }
+
+        Map<String, Object> mlInsights = refreshMlInsights(child.getId());
+        Object rawInsights = mlInsights.get("insights");
+        List<String> insights = toStringList(rawInsights);
+        if (insights.isEmpty()) {
+            insights = List.of("Not enough data yet to show smart insights.");
+        }
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("insights", insights);
+        response.put("categories", mlInsights.getOrDefault("categories", Map.of()));
+        response.put("charts", buildChartData(child));
+        return ResponseEntity.ok(response);
+    }
+
     @GetMapping("/insights/by-user/{userId}")
     public ResponseEntity<?> getInsightsForUser(@PathVariable Long userId) {
         User user = userRepository.findById(userId).orElse(null);
@@ -87,7 +117,7 @@ public class DashboardController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
         }
 
-        Child child = childRepository.findByUserId(userId).orElse(null);
+        Child child = resolveChild(userId);
         if (child == null) {
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("insights", List.of("Not enough data yet to show smart insights."));
@@ -114,7 +144,7 @@ public class DashboardController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
         }
 
-        Child child = childRepository.findByUserId(userId).orElse(null);
+        Child child = resolveChild(userId);
         if (child == null) {
             DashboardResponse response = new DashboardResponse();
             response.setHasChild(false);
@@ -162,6 +192,16 @@ public class DashboardController {
         applySeizureAndMedicationStatus(child, response);
 
         return ResponseEntity.ok(response);
+    }
+
+    private Child resolveChild(Long userId) {
+        if (userId == null) {
+            return null;
+        }
+
+        return childRepository.findAllByUserIdOrderByCreatedAtDescIdDesc(userId).stream()
+                .findFirst()
+                .orElse(null);
     }
 
     // To populate siezure and med status
@@ -228,6 +268,21 @@ public class DashboardController {
         } catch (Exception ignored) {
         }
         return Map.of();
+    }
+
+    private Map<String, Object> refreshMlInsights(Long childId) {
+        try {
+            RestTemplate restTemplate = new RestTemplate();
+            String url = UriComponentsBuilder.fromHttpUrl(mlBaseUrl + "/refresh-insights")
+                    .queryParam("childId", childId)
+                    .toUriString();
+            Map response = restTemplate.postForObject(url, null, Map.class);
+            if (response != null) {
+                return response;
+            }
+        } catch (Exception ignored) {
+        }
+        return fetchMlInsights(childId);
     }
 
     private List<String> toStringList(Object raw) {

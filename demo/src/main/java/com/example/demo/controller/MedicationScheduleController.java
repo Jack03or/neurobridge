@@ -34,7 +34,7 @@ public class MedicationScheduleController {
         User user = userRepository.findById(userId).orElse(null);
         if (user == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
 
-        Child child = childRepository.findByUserId(userId).orElse(null);
+        Child child = resolveChild(userId);
         if (child == null) return ResponseEntity.ok(List.of());
 
         return ResponseEntity.ok(medicationScheduleRepository.findByChildAndActiveTrueOrderByCreatedAtAsc(child));
@@ -45,7 +45,7 @@ public class MedicationScheduleController {
         User user = userRepository.findById(userId).orElse(null);
         if (user == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
 
-        Child child = childRepository.findByUserId(userId).orElse(null);
+        Child child = resolveChild(userId);
         if (child == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("No child linked to this user");
 
         if (req.medicationName == null || req.medicationName.isBlank()) {
@@ -99,5 +99,14 @@ public class MedicationScheduleController {
         public LocalTime defaultTime;
         public Boolean active;
     }
-}
 
+    private Child resolveChild(Long userId) {
+        if (userId == null) {
+            return null;
+        }
+
+        return childRepository.findAllByUserIdOrderByCreatedAtDescIdDesc(userId).stream()
+                .findFirst()
+                .orElse(null);
+    }
+}

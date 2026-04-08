@@ -110,11 +110,39 @@ export default function Dashboard({ route, navigation }) {
     }
   };
 
+  const refreshInsights = async () => {
+    try {
+      const response = await fetch(`${BASE_URL}/api/dashboard/refresh-insights/by-user/${userId}`, {
+        method: 'POST',
+      });
+      const text = await response.text();
+      if (!response.ok) {
+        return false;
+      }
+      const data = text ? JSON.parse(text) : {};
+      setCategories(data.categories && typeof data.categories === 'object' ? data.categories : {});
+      setCharts({ ...emptyCharts, ...(data.charts || {}) });
+      return true;
+    } catch (err) {
+      return false;
+    }
+  };
+
   useEffect(() => {
     fetchDashboard();
     fetchSchedules();
     fetchInsights();
   }, [userId]);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      fetchDashboard();
+      fetchSchedules();
+      fetchInsights();
+    });
+
+    return unsubscribe;
+  }, [navigation, userId]);
 
   const toIsoLocal = (d) => {
     const pad = (v) => String(v).padStart(2, '0');
@@ -159,7 +187,10 @@ export default function Dashboard({ route, navigation }) {
         setDashboard(data);
         maybeShowMedicationReminder(data);
       }
-      await fetchInsights();
+      const refreshed = await refreshInsights();
+      if (!refreshed) {
+        await fetchInsights();
+      }
       if (!silent) Alert.alert('Updated', 'Risk refreshed.');
     } catch (err) {
       if (!silent) Alert.alert('Error', 'Could not refresh risk.');
@@ -200,10 +231,12 @@ export default function Dashboard({ route, navigation }) {
     return age;
   };
 
-  const hasChild = dashboard?.hasChild;
+  const hasChild = dashboard?.hasChild === true;
+  const noChildLinked = dashboard?.hasChild === false;
   const age = dashboard?.dob ? calculateAgeFromDob(dashboard.dob) : '-';
 
-  const riskLevel = (dashboard?.riskLevel || 'UNKNOWN').toUpperCase();
+  const rawRiskLevel = (dashboard?.riskLevel || 'UNKNOWN').toUpperCase();
+  const riskLevel = rawRiskLevel === 'VERY_HIGH' ? 'HIGH' : rawRiskLevel;
   const fitbitConnected = String(dashboard?.fitbitStatusText || '').toUpperCase() === 'CONNECTED';
 
   const getRiskTone = (level) => {
@@ -384,7 +417,7 @@ export default function Dashboard({ route, navigation }) {
             <LoadingWrapper>
               <ActivityIndicator />
             </LoadingWrapper>
-          ) : !hasChild ? (
+          ) : noChildLinked ? (
             <EmptyState>
               <EmptyTitle>No child linked yet</EmptyTitle>
               <EmptyText>
@@ -396,7 +429,7 @@ export default function Dashboard({ route, navigation }) {
                 <EmptyButtonText>Add Child</EmptyButtonText>
               </EmptyButton>
             </EmptyState>
-          ) : (
+          ) : hasChild ? (
             <>
               <ChildHeaderRow>
                 <ChildName>{dashboard.childName}</ChildName>
@@ -511,6 +544,10 @@ export default function Dashboard({ route, navigation }) {
                 </MetricChip>
               </MetricsRow>
             </>
+          ) : (
+            <LoadingWrapper>
+              <ActivityIndicator />
+            </LoadingWrapper>
           )}
         </ChildCard>
 
