@@ -324,6 +324,7 @@ public class DashboardController {
         trendSeries.put("labels", trendLabels);
         trendSeries.put("values", trendValues);
         charts.put("trendSeries", trendSeries);
+        charts.put("dailyDetails", buildDailyDetails(child, trendStart, today, recentSeizures, trendByDate));
 
         List<SeizureLog> allSeizures = seizureLogRepository.findByChildOrderByTimestampDesc(child);
         Map<String, Integer> timingBuckets = new LinkedHashMap<>();
@@ -374,6 +375,145 @@ public class DashboardController {
         charts.put("medicationHeatmap", buildMedicationHeatmap(child));
 
         return charts;
+    }
+
+    private List<Map<String, Object>> buildDailyDetails(
+            Child child,
+            LocalDate start,
+            LocalDate end,
+            List<SeizureLog> recentSeizures,
+            Map<LocalDate, Long> trendByDate
+    ) {
+        Map<LocalDate, List<SeizureLog>> seizuresByDate = recentSeizures.stream()
+                .filter(seizure -> seizure.getTimestamp() != null)
+                .collect(Collectors.groupingBy(
+                        seizure -> seizure.getTimestamp().toLocalDate(),
+                        HashMap::new,
+                        Collectors.toList()
+                ));
+
+        Map<LocalDate, FitBitMetrics> metricsByDate = fitBitMetricsRepository
+                .findByChildAndDateBetweenOrderByDateAsc(child, start, end)
+                .stream()
+                .collect(Collectors.toMap(FitBitMetrics::getDate, m -> m, (first, second) -> second, LinkedHashMap::new));
+
+        Map<LocalDate, List<MedicationLog>> medsByDate = medicationLogRepository
+                .findByChildAndDateBetweenOrderByDateDesc(child, start, end)
+                .stream()
+                .collect(Collectors.groupingBy(MedicationLog::getDate, HashMap::new, Collectors.toList()));
+
+        List<MedicationSchedule> schedules = medicationScheduleRepository.findByChildAndActiveTrueOrderByCreatedAtAsc(child);
+        LocalTime scheduledTime = schedules.isEmpty() ? null : schedules.get(0).getDefaultTime();
+
+        List<Map<String, Object>> details = new ArrayList<>();
+        for (int i = 0; i < 7; i++) {
+            LocalDate day = start.plusDays(i);
+            List<SeizureLog> daySeizures = seizuresByDate.getOrDefault(day, List.of());
+            FitBitMetrics metric = metricsByDate.get(day);
+            List<MedicationLog> dayMeds = medsByDate.getOrDefault(day, List.of());
+            String medicationStatus = resolveMedicationDayStatus(dayMeds, scheduledTime);
+            List<String> triggers = buildTriggerList(daySeizures);
+
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("date", day.toString());
+            item.put("label", day.getDayOfWeek().name().substring(0, 3));
+            item.put("seizureCount", trendByDate.getOrDefault(day, 0L).intValue());
+            item.put("seizureTimes", buildSeizureTimes(daySeizures));
+            item.put("sleepHours", metric == null ? null : metric.getSleepHours());
+            item.put("heartRate", metric == null ? null : metric.getLatestHeartRate());
+            item.put("hrv", metric == null ? null : metric.getHrv());
+            item.put("medicationStatus", medicationStatus);
+            item.put("medicationStatusText", medicationStatusText(medicationStatus));
+            item.put("triggers", triggers);
+            item.put("hoursSinceLastMeal", latestHoursSinceLastMeal(daySeizures));
+            item.put("summary", buildDailyDetailSummary(
+                    trendByDate.getOrDefault(day, 0L).intValue(),
+                    metric,
+                    medicationStatus,
+                    triggers
+            ));
+            details.add(item);
+        }
+        return details;
+    }
+
+    private List<String> buildSeizureTimes(List<SeizureLog> seizures) {
+        return seizures.stream()
+                .filter(seizure -> seizure.getTimestamp() != null)
+                .map(seizure -> seizure.getTimestamp().toLocalTime().format(TIME_FORMATTER))
+                .collect(Collectors.toList());
+    }
+
+    private List<String> buildTriggerList(List<SeizureLog> seizures) {
+        List<String> triggers = new ArrayList<>();
+        for (SeizureLog seizure : seizures) {
+            if (seizure.getSeizureTrigger() == null || seizure.getSeizureTrigger().isBlank()) {
+                continue;
+            }
+            for (String trigger : seizure.getSeizureTrigger().split(",")) {
+                String cleaned = trigger.trim();
+                if (!cleaned.isBlank() && !triggers.contains(cleaned)) {
+                    triggers.add(cleaned);
+                }
+            }
+        }
+        return triggers;
+    }
+
+    private Integer latestHoursSinceLastMeal(List<SeizureLog> seizures) {
+        return seizures.stream()
+                .filter(seizure -> seizure.getTimestamp() != null)
+                .filter(seizure -> seizure.getHoursSinceLastMeal() != null)
+                .max((a, b) -> a.getTimestamp().compareTo(b.getTimestamp()))
+                .map(SeizureLog::getHoursSinceLastMeal)
+                .orElse(null);
+    }
+
+    private String medicationStatusText(String status) {
+        return switch (status) {
+            case "taken" -> "Medication taken on time";
+            case "late" -> "Medication taken late";
+            case "missed" -> "Medication missed";
+            default -> "Medication not logged";
+        };
+    }
+
+    private String buildDailyDetailSummary(
+            int seizureCount,
+            FitBitMetrics metric,
+            String medicationStatus,
+            List<String> triggers
+    ) {
+        List<String> factors = new ArrayList<>();
+
+        if (metric != null && metric.getSleepHours() != null && metric.getSleepHours() < 6.0) {
+            factors.add("low sleep");
+        }
+        if ("late".equals(medicationStatus)) {
+            factors.add("late medication");
+        } else if ("missed".equals(medicationStatus)) {
+            factors.add("missed medication");
+        }
+        if (metric != null && metric.getLatestHeartRate() != null && metric.getLatestHeartRate() > 100) {
+            factors.add("higher heart rate");
+        }
+        if (metric != null && metric.getHrv() != null && metric.getHrv() < 40.0) {
+            factors.add("lower HRV");
+        }
+        if (!triggers.isEmpty()) {
+            factors.add("noted triggers");
+        }
+
+        if (seizureCount > 0 && !factors.isEmpty()) {
+            return "This seizure day also had " + String.join(", ", factors) + ".";
+        }
+        if (seizureCount > 0) {
+            return "A seizure was logged on this day.";
+        }
+        if (!factors.isEmpty()) {
+            return "No seizure was logged, but this day had " + String.join(", ", factors) + ".";
+        }
+        return "No major warning signs stood out in the logged data.";
     }
 
     private Map<String, Object> buildSleepSeizureSeries(Child child, LocalDate start, LocalDate end, Map<LocalDate, Long> trendByDate) {
