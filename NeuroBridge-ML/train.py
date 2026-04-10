@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+from datetime import time
 
 import joblib
 import numpy as np
@@ -71,6 +72,23 @@ def coerce_bit(value) -> int:
         return np.nan
 
 
+def coerce_time(value):
+    if value is None or pd.isna(value):
+        return pd.NaT
+    if isinstance(value, time):
+        return value
+    if isinstance(value, pd.Timedelta):
+        total_seconds = int(value.total_seconds())
+        total_seconds = total_seconds % (24 * 60 * 60)
+        return time(total_seconds // 3600, (total_seconds % 3600) // 60, total_seconds % 60)
+    if hasattr(value, "total_seconds"):
+        total_seconds = int(value.total_seconds())
+        total_seconds = total_seconds % (24 * 60 * 60)
+        return time(total_seconds // 3600, (total_seconds % 3600) // 60, total_seconds % 60)
+    parsed = pd.to_datetime(str(value), format="%H:%M:%S", errors="coerce")
+    return parsed.time() if pd.notna(parsed) else pd.NaT
+
+
 def load_tables() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     seizure_df = read_sql(
         """
@@ -110,9 +128,7 @@ def load_tables() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFram
     meds_df["schedule_id"] = pd.to_numeric(meds_df["schedule_id"], errors="coerce")
 
     if not schedules_df.empty:
-        schedules_df["default_time"] = pd.to_datetime(
-            schedules_df["default_time"], format="%H:%M:%S", errors="coerce"
-        ).dt.time
+        schedules_df["default_time"] = schedules_df["default_time"].apply(coerce_time)
         schedules_df["active"] = schedules_df["active"].apply(coerce_bit).fillna(0).astype(int)
         schedules_df["created_at"] = pd.to_datetime(schedules_df["created_at"], errors="coerce")
 

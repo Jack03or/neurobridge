@@ -27,6 +27,7 @@ class PredictRequest(BaseModel):
     latest_heart_rate: int = Field(..., ge=30, le=220)
     hrv: float = Field(..., ge=0, le=300)
     medication_taken: int = Field(..., ge=0, le=1)  # 0/1
+    medication_status: str = Field("missed")
     days_since_seizure: int = Field(..., ge=0, le=3650)
 
 # ---- Startup: load model once ----
@@ -117,11 +118,27 @@ def safe_probability(p: float) -> float:
 
     # A monotonic curve that keeps ranking intact but reduces aggressive
     # percentages on safer-looking days.
-    p = p ** 1.35
+    p = p ** 2.6
 
-    # clamp to 5%..95%
+    # clamp to 5%..95% so we never claim certainty.
     p = float(np.clip(p, 0.05, 0.95))
     return p
+
+
+def apply_live_medication_adjustment(p: float, medication_status: str, medication_taken: int) -> float:
+    p = float(np.clip(p, 0.0, 1.0))
+    status = (medication_status or "").strip().lower()
+    if status == "taken":
+        p -= 0.015
+    elif status == "late":
+        p += 0.005
+    elif status == "missed":
+        p += 0.005
+    elif medication_taken == 1:
+        p -= 0.04
+    else:
+        p += 0.005
+    return float(np.clip(p, 0.0, 1.0))
 
 def risk_level_from_percent(risk_percent: int) -> str:
     # risk levels based on percent thresholds 
@@ -139,20 +156,25 @@ def build_feature_frame(req: PredictRequest):
     sleep_score = max(0.0, (7.5 - req.sleep_hours) * 1.5)
     hrv_score = max(0.0, 55.0 - req.hrv)
     hr_score = max(0.0, req.latest_heart_rate - 85.0)
-    any_missed_med = 0 if req.medication_taken == 1 else 1
-    low_sleep_and_missed = 1 if (req.sleep_hours < 6.0 and any_missed_med == 1) else 0
+
+    status = (req.medication_status or "").strip().lower()
+    med_taken = 1 if status in {"taken", "late"} or req.medication_taken == 1 else 0
+    med_late = 1 if status == "late" else 0
+    med_missed = 1 if status == "missed" or med_taken == 0 else 0
+    low_sleep_and_missed = 1 if (req.sleep_hours < 6.0 and med_missed == 1) else 0
+    time_since_last_med_hours = 8.0 if med_late == 1 else (0.0 if med_taken == 1 else 24.0)
 
     values = {
         "sleep_score": sleep_score,
         "hrv_score": hrv_score,
         "hr_score": hr_score,
-        "adherence_ratio": float(req.medication_taken),
-        "missed_meds_count": float(any_missed_med),
-        "late_meds_count": 0.0,
-        "any_missed_med": float(any_missed_med),
-        "any_late_med": 0.0,
+        "adherence_ratio": float(med_taken),
+        "missed_meds_count": float(med_missed),
+        "late_meds_count": float(med_late),
+        "any_missed_med": float(med_missed),
+        "any_late_med": float(med_late),
         "low_sleep_and_missed_meds": float(low_sleep_and_missed),
-        "time_since_last_med_hours": 0.0 if req.medication_taken == 1 else 24.0,
+        "time_since_last_med_hours": time_since_last_med_hours,
         "hour_of_day": float(np.datetime64("now").astype(object).hour),
         "day_of_week": float(np.datetime64("today").astype(object).weekday()),
     }
@@ -174,6 +196,7 @@ def predict(req: PredictRequest):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Prediction failed: {exc}")
 
+    proba = apply_live_medication_adjustment(proba, req.medication_status, req.medication_taken)
     p_safe = safe_probability(proba)
     risk_percent = int(round(p_safe * 100))
     level = risk_level_from_percent(risk_percent)

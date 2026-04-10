@@ -78,7 +78,14 @@ def summarize_bucket(messages: list[dict], fallback: str) -> dict:
     else:
         status = "good"
 
-    return {"status": status, "messages": [item["text"] for item in unique[:5]]}
+    if status == "good":
+        low_priority = [item["text"] for item in unique if item["severity"] == "low"]
+        output_messages = [fallback]
+        if low_priority:
+            output_messages.append(low_priority[0])
+    else:
+        output_messages = [item["text"] for item in unique[:5]]
+    return {"status": status, "messages": output_messages[:5]}
 
 
 def build_daily_events(events: pd.DataFrame) -> pd.DataFrame:
@@ -170,6 +177,14 @@ def build_sleep_insights(
     current_low_sleep_streak: int,
 ) -> dict:
     messages = []
+    current_status = "watch" if current_low_sleep_streak >= 1 else "good"
+
+    if current_low_sleep_streak == 1:
+        add_message(
+            messages,
+            "Sleep was lower than usual today. Keep an eye on patterns.",
+            "medium",
+        )
 
     if (
         current_low_sleep_streak >= 2
@@ -181,22 +196,28 @@ def build_sleep_insights(
             f"Poor sleep has lasted {current_low_sleep_streak} nights in a row. This pattern has happened before seizure days.",
             "high",
         )
+        current_status = "alert"
 
     if low_sleep_seiz > low_sleep_non + 0.1:
         add_message(
             messages,
-            "After poor sleep, seizure risk has historically been higher.",
-            "medium",
+            "In the past, poor sleep has been linked with seizure days.",
+            "low",
         )
 
     if low_sleep_streak_seiz > low_sleep_streak_non + 0.12:
         add_message(
             messages,
-            "When poor sleep lasts 2 or more nights, seizure risk has historically been higher.",
-            "medium",
+            "In the past, several poor-sleep nights in a row have been linked with seizure days.",
+            "low",
         )
 
-    return summarize_bucket(messages, "Sleep has been steady recently.")
+    summary = summarize_bucket(messages, "Sleep looks stable today.")
+    if current_status == "watch" and summary["status"] == "good":
+        summary["status"] = "watch"
+    if current_status == "alert":
+        summary["status"] = "alert"
+    return summary
 
 
 def build_medication_insights(
@@ -209,6 +230,7 @@ def build_medication_insights(
     combined_days_non: float,
 ) -> dict:
     messages = []
+    current_status = "good"
 
     if latest_day is not None and latest_day["any_missed_med"] == 1 and missed_meds_rate_seiz > missed_meds_rate_non + 0.10:
         add_message(
@@ -216,6 +238,7 @@ def build_medication_insights(
             "Today's medication was missed. Seizure risk has been higher when doses are skipped.",
             "high",
         )
+        current_status = "alert"
 
     if latest_day is not None and latest_day["low_sleep_and_missed"] == 1 and combined_days_seiz > combined_days_non + 0.10:
         add_message(
@@ -223,36 +246,44 @@ def build_medication_insights(
             "Poor sleep and a missed dose are happening together today. This combination has happened before seizure days. Consider extra monitoring.",
             "high",
         )
+        current_status = "alert"
 
-    if latest_day is not None and latest_day["any_late_med"] == 1 and late_meds_rate_seiz > late_meds_rate_non + 0.10:
+    if latest_day is not None and latest_day["any_late_med"] == 1:
         add_message(
             messages,
-            "Medication has been taken late recently. Late doses have happened before seizure days.",
+            "Medication was taken late today. Try to stay close to the usual time.",
             "medium",
         )
+        if current_status != "alert":
+            current_status = "watch"
 
     if missed_meds_rate_seiz > missed_meds_rate_non + 0.1:
         add_message(
             messages,
-            "When medication is missed, seizure risk has historically been higher.",
-            "medium",
+            "In the past, missed medication has been linked with seizure days.",
+            "low",
         )
 
     if combined_days_seiz > combined_days_non + 0.1:
         add_message(
             messages,
-            "Poor sleep and missed medication together have been linked with higher seizure risk.",
-            "medium",
+            "In the past, poor sleep and missed medication together have been linked with seizure days.",
+            "low",
         )
 
     if late_meds_rate_seiz > late_meds_rate_non + 0.1:
         add_message(
             messages,
-            "When medication is taken late, seizure risk has sometimes been higher.",
+            "In the past, late medication has sometimes been linked with seizure days.",
             "low",
         )
 
-    return summarize_bucket(messages, "Medication has been logged consistently.")
+    summary = summarize_bucket(messages, "Medication has been on track today.")
+    if current_status == "watch" and summary["status"] == "good":
+        summary["status"] = "watch"
+    if current_status == "alert":
+        summary["status"] = "alert"
+    return summary
 
 
 def build_body_signal_insights(
@@ -282,15 +313,15 @@ def build_body_signal_insights(
     if low_hrv_rate_seiz > low_hrv_rate_non + 0.12:
         add_message(
             messages,
-            "Higher stress has been seen more often before seizure days.",
-            "medium",
+            "In the past, higher stress has been seen before seizure days.",
+            "low",
         )
 
     if high_hr_rate_seiz > high_hr_rate_non + 0.12:
         add_message(
             messages,
-            "A higher heart rate has been seen more often before seizure days.",
-            "medium",
+            "In the past, a higher heart rate has been seen before seizure days.",
+            "low",
         )
 
     return summarize_bucket(messages, "Body signals look steady right now.")
@@ -308,7 +339,7 @@ def build_seizure_pattern_insights(
     messages = []
 
     if seizures.empty:
-        return summarize_bucket(messages, "Not enough seizure history to show a clear pattern yet.")
+        return summarize_bucket(messages, "No seizure pattern needs extra attention right now.")
 
     if combined_days_seiz > combined_days_non + 0.1:
         add_message(

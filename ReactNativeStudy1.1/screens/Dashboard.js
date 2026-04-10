@@ -583,7 +583,7 @@ export default function Dashboard({ route, navigation }) {
 
             {selectedMessages.map((item, idx) => (
               <WarningRow key={`category-${idx}`}>
-                <WarningDot style={{ backgroundColor: selectedTone.color }} />
+                <WarningDot />
                 <InsightText style={{ flex: 1, marginTop: 0 }}>{item}</InsightText>
               </WarningRow>
             ))}
@@ -1206,7 +1206,7 @@ const WarningDot = styled.View`
   width: 7px;
   height: 7px;
   border-radius: 3.5px;
-  background-color: #b03060;
+  background-color: #8b7e76;
   margin-right: 8px;
   margin-top: 5px;
 `;

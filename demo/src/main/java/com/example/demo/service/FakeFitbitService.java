@@ -3,9 +3,11 @@ package com.example.demo.service;
 import com.example.demo.model.Child;
 import com.example.demo.model.FitBitMetrics;
 import com.example.demo.model.MedicationLog;
+import com.example.demo.model.MedicationSchedule;
 import com.example.demo.model.SeizureLog;
 import com.example.demo.repository.FitBitMetricsRepository;
 import com.example.demo.repository.MedicationLogRepository;
+import com.example.demo.repository.MedicationScheduleRepository;
 import com.example.demo.repository.SeizureLogRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,9 +19,11 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -33,6 +37,9 @@ public class FakeFitbitService implements FitbitService {
 
     @Autowired
     private MedicationLogRepository medicationLogRepository;
+
+    @Autowired
+    private MedicationScheduleRepository medicationScheduleRepository;
 
     @Autowired
     private SeizureLogRepository seizureLogRepository;
@@ -117,6 +124,7 @@ public class FakeFitbitService implements FitbitService {
             LocalDate today = LocalDate.now();
             List<MedicationLog> todayLogs = medicationLogRepository.findByChildAndDate(child, today);
             int medicationTaken = todayLogs.stream().anyMatch(MedicationLog::isTaken) ? 1 : 0;
+            String medicationStatus = resolveMedicationStatus(child, todayLogs, medicationTaken);
 
             Optional<SeizureLog> latest = seizureLogRepository.findFirstByChildOrderByTimestampDesc(child);
             int daysSinceSeizure = 30;
@@ -130,6 +138,7 @@ public class FakeFitbitService implements FitbitService {
                     "latest_heart_rate", metrics.getLatestHeartRate() == null ? 85 : metrics.getLatestHeartRate(),
                     "hrv", metrics.getHrv() == null ? 55.0 : metrics.getHrv(),
                     "medication_taken", medicationTaken,
+                    "medication_status", medicationStatus,
                     "days_since_seizure", daysSinceSeizure
             );
 
@@ -187,6 +196,40 @@ public class FakeFitbitService implements FitbitService {
         metrics.setRiskPercent(risk);
         metrics.setRiskLevel(level);
         metrics.setRiskCalculatedAt(LocalDateTime.now());
+    }
+
+    private String resolveMedicationStatus(Child child, List<MedicationLog> todayLogs, int medicationTaken) {
+        if (medicationTaken == 0) {
+            return "missed";
+        }
+
+        MedicationLog takenLog = todayLogs.stream()
+                .filter(MedicationLog::isTaken)
+                .filter(log -> log.getTakenAt() != null)
+                .max(Comparator.comparing(MedicationLog::getTakenAt))
+                .orElse(null);
+
+        if (takenLog == null) {
+            return "taken";
+        }
+
+        LocalTime scheduledTime = null;
+        if (takenLog.getSchedule() != null && takenLog.getSchedule().getDefaultTime() != null) {
+            scheduledTime = takenLog.getSchedule().getDefaultTime();
+        } else {
+            scheduledTime = medicationScheduleRepository.findByChildAndActiveTrueOrderByCreatedAtAsc(child).stream()
+                    .map(MedicationSchedule::getDefaultTime)
+                    .filter(time -> time != null)
+                    .findFirst()
+                    .orElse(null);
+        }
+
+        if (scheduledTime == null) {
+            return "taken";
+        }
+
+        LocalDateTime cutoff = takenLog.getDate().atTime(scheduledTime.plusMinutes(30));
+        return takenLog.getTakenAt().isAfter(cutoff) ? "late" : "taken";
     }
 
     private boolean tryPopulateFromFitbit(FitBitMetrics metrics, Child child) {
