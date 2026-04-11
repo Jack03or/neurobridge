@@ -3,7 +3,7 @@ import { Text, useWindowDimensions, View } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import styled from 'styled-components/native';
 
-export default function InsightSleepSeizureLine({ data }) {
+export default function InsightSleepSeizureLine({ data, onSelectDay }) {
   const { width } = useWindowDimensions();
   const labels = Array.isArray(data?.labels) ? data.labels : [];
   const sleepValues = Array.isArray(data?.sleepValues) ? data.sleepValues.map((v) => Number(v || 0)) : [];
@@ -75,6 +75,11 @@ export default function InsightSleepSeizureLine({ data }) {
         style={{ marginVertical: 8, borderRadius: 12 }}
         segments={5}
         getDotColor={(_, index) => (seizureMarkers[index] == null ? 'transparent' : '#b03060')}
+        onDataPointClick={({ index }) => {
+          if (typeof onSelectDay === 'function' && index != null && seizureMarkers[index] != null) {
+            onSelectDay(index);
+          }
+        }}
       />
 
       <LegendRow>

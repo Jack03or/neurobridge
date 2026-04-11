@@ -29,6 +29,9 @@ export default function Dashboard({ route, navigation }) {
   const [takenAt, setTakenAt] = useState(new Date());
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showMedicationModal, setShowMedicationModal] = useState(false);
+  const [selectedTimingDetail, setSelectedTimingDetail] = useState(null);
+  const [selectedTrendIndex, setSelectedTrendIndex] = useState(null);
+  const [selectedSleepIndex, setSelectedSleepIndex] = useState(null);
   const [refreshingRisk, setRefreshingRisk] = useState(false);
   const [fitbitBusy, setFitbitBusy] = useState(false);
   const emptyCharts = {
@@ -37,6 +40,7 @@ export default function Dashboard({ route, navigation }) {
     timingSplit: { labels: [], values: [] },
     medicationHeatmap: { days: [], summary: 'Not enough medication data yet.' },
     sleepSeizureSeries: { labels: [], sleepValues: [], seizureMarkers: [], seizureCounts: [] },
+    dailyDetails: [],
   };
 
   const maybeShowMedicationReminder = (data) => {
@@ -393,6 +397,114 @@ export default function Dashboard({ route, navigation }) {
     { key: 'timing', label: 'Timing Pattern' },
     { key: 'sleepSeizure', label: 'Sleep + Seizures' },
   ];
+  const dailyDetails = Array.isArray(charts?.dailyDetails) ? charts.dailyDetails : [];
+  const openTrendTooltip = (index) => {
+    if (index == null || index < 0 || index >= dailyDetails.length) return;
+    setSelectedTrendIndex((current) => (current === index ? null : index));
+  };
+  const formatDetailDate = (dateString, fallbackLabel) => {
+    if (!dateString) return fallbackLabel || '--';
+    const date = new Date(`${dateString}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return fallbackLabel || dateString;
+    return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+  const formatDetailValue = (value, suffix = '') => {
+    if (value == null || value === '') return '--';
+    return `${value}${suffix}`;
+  };
+  const selectedTrendDetail = selectedTrendIndex == null ? null : dailyDetails[selectedTrendIndex] || null;
+  const selectedTrendLeft = selectedTrendIndex == null ? '50%' : `${((selectedTrendIndex + 0.5) / Math.max(trendLabels.length, 1)) * 100}%`;
+  const buildTrendDetailPoints = (detail) => {
+    if (!detail) return [];
+    const points = [];
+
+    if (detail.sleepHours != null) {
+      points.push(`Sleep: ${detail.sleepHours} hrs`);
+      if (Number(detail.sleepHours) < 6) {
+        points.push('Low sleep day');
+      }
+    }
+
+    if (detail.medicationStatusText && detail.medicationStatus !== 'none') {
+      points.push(`Medication: ${detail.medicationStatusText}`);
+    }
+
+    if (detail.heartRate != null) {
+      points.push(`Heart rate: ${detail.heartRate} bpm`);
+    }
+
+    if (detail.hrv != null) {
+      points.push(`HRV: ${detail.hrv}`);
+    }
+
+    if (Array.isArray(detail.triggers) && detail.triggers.length) {
+      points.push(`Potential Triggers: ${detail.triggers.join(', ')}`);
+    }
+
+    if (Array.isArray(detail.seizureTimes) && detail.seizureTimes.length) {
+      points.push(`Seizure time: ${detail.seizureTimes.join(', ')}`);
+    }
+
+    if (detail.hoursSinceLastMeal != null) {
+      points.push(`Hours since last meal: ${detail.hoursSinceLastMeal}`);
+    }
+
+    if (!points.length) {
+      points.push('No extra day details yet.');
+    }
+
+    return points;
+  };
+  const openTimingDetail = (index) => {
+    if (index == null || index < 0 || index >= timingLabels.length) return;
+    const count = timingValues[index] || 0;
+    const percent = timingTotal > 0 ? Math.round((count / timingTotal) * 100) : 0;
+    const label = timingLabels[index];
+    const isTop = topTimes.includes(label) && timingMax > 0;
+    const nextDetail = {
+      label,
+      count,
+      percent,
+      summary: isTop
+        ? `${label} is the most common time window for logged seizures.`
+        : `${count} seizures were logged in the ${String(label || '').toLowerCase()} time window.`,
+    };
+    setSelectedTimingDetail((current) => (current?.label === nextDetail.label ? null : nextDetail));
+  };
+  const openSleepTooltip = (index) => {
+    if (index == null || index < 0 || index >= dailyDetails.length) return;
+    setSelectedSleepIndex((current) => (current === index ? null : index));
+  };
+  const selectedSleepDetail = selectedSleepIndex == null ? null : dailyDetails[selectedSleepIndex] || null;
+  const selectedSleepLeft = selectedSleepIndex == null ? '50%' : `${((selectedSleepIndex + 0.5) / Math.max(sleepPatternLabels.length, 1)) * 100}%`;
+  const buildSleepDetailPoints = (detail) => {
+    if (!detail) return [];
+    const points = [];
+    if (detail.sleepHours != null) {
+      points.push(`Sleep: ${detail.sleepHours} hrs`);
+    }
+    if (Array.isArray(detail.seizureTimes) && detail.seizureTimes.length) {
+      points.push(`Seizure time: ${detail.seizureTimes.join(', ')}`);
+    } else if (detail.seizureCount != null) {
+      points.push(`Seizures: ${detail.seizureCount}`);
+    }
+    if (detail.medicationStatusText && detail.medicationStatus !== 'none') {
+      points.push(`Medication: ${detail.medicationStatusText}`);
+    }
+    if (detail.heartRate != null) {
+      points.push(`Heart rate: ${detail.heartRate} bpm`);
+    }
+    if (detail.hrv != null) {
+      points.push(`HRV: ${detail.hrv}`);
+    }
+    if (Array.isArray(detail.triggers) && detail.triggers.length) {
+      points.push(`Potential Triggers: ${detail.triggers.join(', ')}`);
+    }
+    if (!points.length) {
+      points.push('No extra day details yet.');
+    }
+    return points;
+  };
 
   return (
     <Container>
@@ -609,7 +721,32 @@ export default function Dashboard({ route, navigation }) {
 
             {selectedChartTab === 'trend' ? (
               <>
-                <InsightTrendLine data={charts.trendSeries} />
+                <TrendChartWrap>
+                  <InsightTrendLine data={charts.trendSeries} onSelectDay={openTrendTooltip} />
+                  {selectedTrendDetail ? (
+                    <TrendTooltip style={{ left: selectedTrendLeft }} onPress={() => setSelectedTrendIndex(null)}>
+                      <TrendTooltipCard>
+                        <TrendTooltipTitle>
+                          {formatDetailDate(selectedTrendDetail.date, selectedTrendDetail.label)}
+                        </TrendTooltipTitle>
+                        {buildTrendDetailPoints(selectedTrendDetail).map((item, idx) => (
+                          <TrendTooltipRow key={`trend-detail-${idx}`}>
+                            <TrendTooltipDot />
+                            <TrendTooltipText>{item}</TrendTooltipText>
+                          </TrendTooltipRow>
+                        ))}
+                      </TrendTooltipCard>
+                    </TrendTooltip>
+                  ) : null}
+                  <TrendTouchRow>
+                    {trendLabels.map((label, index) => (
+                      <TrendTouchZone
+                        key={`${label}-${index}`}
+                        onPress={() => openTrendTooltip(index)}
+                      />
+                    ))}
+                  </TrendTouchRow>
+                </TrendChartWrap>
                 <InsightText>{trendSummary}</InsightText>
               </>
             ) : (
@@ -666,12 +803,50 @@ export default function Dashboard({ route, navigation }) {
 
             {selectedSecondaryChartTab === 'timing' ? (
               <>
-                <InsightTimingPie data={charts.timingSplit} />
+                  <ChartTooltipWrap>
+                    <InsightTimingPie data={charts.timingSplit} onSelectSlice={openTimingDetail} />
+                    {selectedTimingDetail ? (
+                      <TimingTooltip onPress={() => setSelectedTimingDetail(null)}>
+                        <InlineTooltipCard>
+                          <InlineTooltipTitle>{selectedTimingDetail.label}</InlineTooltipTitle>
+                          <InlineTooltipRow>
+                            <InlineTooltipDot />
+                            <InlineTooltipText>{`${selectedTimingDetail.count} seizures`}</InlineTooltipText>
+                        </InlineTooltipRow>
+                        <InlineTooltipRow>
+                          <InlineTooltipDot />
+                          <InlineTooltipText>{`${selectedTimingDetail.percent}% share`}</InlineTooltipText>
+                        </InlineTooltipRow>
+                          <InlineTooltipRow>
+                            <InlineTooltipDot />
+                            <InlineTooltipText>{selectedTimingDetail.summary}</InlineTooltipText>
+                          </InlineTooltipRow>
+                        </InlineTooltipCard>
+                      </TimingTooltip>
+                    ) : null}
+                  </ChartTooltipWrap>
                 <InsightText>{timingSummary}</InsightText>
               </>
             ) : (
               <>
-                <InsightSleepSeizureLine data={charts.sleepSeizureSeries} />
+                <ChartTooltipWrap>
+                  <InsightSleepSeizureLine data={charts.sleepSeizureSeries} onSelectDay={openSleepTooltip} />
+                  {selectedSleepDetail ? (
+                    <InlineTooltip style={{ left: selectedSleepLeft }} onPress={() => setSelectedSleepIndex(null)}>
+                      <InlineTooltipCard>
+                        <InlineTooltipTitle>
+                          {formatDetailDate(selectedSleepDetail.date, selectedSleepDetail.label)}
+                        </InlineTooltipTitle>
+                        {buildSleepDetailPoints(selectedSleepDetail).map((item, idx) => (
+                          <InlineTooltipRow key={`sleep-detail-${idx}`}>
+                            <InlineTooltipDot />
+                            <InlineTooltipText>{item}</InlineTooltipText>
+                          </InlineTooltipRow>
+                        ))}
+                      </InlineTooltipCard>
+                    </InlineTooltip>
+                  ) : null}
+                </ChartTooltipWrap>
                 <InsightText>{sleepPatternSummary}</InsightText>
               </>
             )}
@@ -1177,6 +1352,131 @@ const HeatmapLegendRow = styled.View`
   margin-top: 4px;
 `;
 
+const TrendChartWrap = styled.View`
+  position: relative;
+`;
+
+const TrendTouchRow = styled.View`
+  position: absolute;
+  left: 26px;
+  right: 12px;
+  top: 8px;
+  bottom: 34px;
+  flex-direction: row;
+`;
+
+const TrendTouchZone = styled.TouchableOpacity`
+  flex: 1;
+`;
+
+const TrendTooltip = styled.TouchableOpacity`
+  position: absolute;
+  top: 8px;
+  margin-left: -72px;
+  z-index: 5;
+`;
+
+const TrendTooltipCard = styled.View`
+  width: 144px;
+  background-color: #fff7fb;
+  border-width: 1px;
+  border-color: #e7c7d3;
+  border-radius: 14px;
+  padding: 10px 12px;
+  shadow-color: #000;
+  shadow-opacity: 0.08;
+  shadow-radius: 8px;
+  elevation: 3;
+`;
+
+const TrendTooltipTitle = styled.Text`
+  font-size: 12px;
+  font-weight: 800;
+  color: #b03060;
+  margin-bottom: 4px;
+`;
+
+const TrendTooltipText = styled.Text`
+  font-size: 11px;
+  line-height: 16px;
+  color: #5f544f;
+`;
+
+const TrendTooltipRow = styled.View`
+  flex-direction: row;
+  align-items: flex-start;
+  margin-top: 4px;
+`;
+
+const TrendTooltipDot = styled.View`
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background-color: #b03060;
+  margin-right: 6px;
+  margin-top: 5px;
+`;
+
+const ChartTooltipWrap = styled.View`
+  position: relative;
+`;
+
+const InlineTooltip = styled.TouchableOpacity`
+  position: absolute;
+  top: 8px;
+  margin-left: -72px;
+  z-index: 5;
+`;
+
+const TimingTooltip = styled.TouchableOpacity`
+  position: absolute;
+  top: 10px;
+  right: 8px;
+  z-index: 5;
+`;
+
+const InlineTooltipCard = styled.View`
+  width: 144px;
+  background-color: #fff7fb;
+  border-width: 1px;
+  border-color: #e7c7d3;
+  border-radius: 14px;
+  padding: 10px 12px;
+  shadow-color: #000;
+  shadow-opacity: 0.08;
+  shadow-radius: 8px;
+  elevation: 3;
+`;
+
+const InlineTooltipTitle = styled.Text`
+  font-size: 12px;
+  font-weight: 800;
+  color: #b03060;
+  margin-bottom: 4px;
+`;
+
+const InlineTooltipRow = styled.View`
+  flex-direction: row;
+  align-items: flex-start;
+  margin-top: 4px;
+`;
+
+const InlineTooltipDot = styled.View`
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background-color: #b03060;
+  margin-right: 6px;
+  margin-top: 5px;
+`;
+
+const InlineTooltipText = styled.Text`
+  font-size: 11px;
+  line-height: 16px;
+  color: #5f544f;
+  flex: 1;
+`;
+
 const LegendItem = styled.View`
   flex-direction: row;
   align-items: center;
@@ -1206,7 +1506,7 @@ const WarningDot = styled.View`
   width: 7px;
   height: 7px;
   border-radius: 3.5px;
-  background-color: #8b7e76;
+  background-color: #b03060;
   margin-right: 8px;
   margin-top: 5px;
 `;
