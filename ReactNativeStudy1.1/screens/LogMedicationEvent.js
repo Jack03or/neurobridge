@@ -94,6 +94,10 @@ export default function LogMedicationEvent({ route, navigation }) {
         return;
       }
 
+      await fetch(`${BASE_URL}/api/dashboard/refresh-insights/by-user/${userId}`, {
+        method: 'POST',
+      });
+
       Alert.alert('Saved', taken ? 'Medication marked as taken.' : 'Medication marked as missed.');
       navigation.goBack();
     } catch (e) {
@@ -404,4 +408,3 @@ const SaveText = styled.Text`
   color: #fff;
   font-weight: 900;
 `;
-

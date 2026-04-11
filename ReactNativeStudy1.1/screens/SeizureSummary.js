@@ -40,6 +40,10 @@ export default function SeizureSummary({ route, navigation }) {
         return;
       }
 
+      await fetch(`${BASE_URL}/api/dashboard/refresh-insights/by-user/${payload.userId}`, {
+        method: 'POST',
+      });
+
       Alert.alert('Saved', 'Seizure entry added.');
       navigation.navigate('MainTabs', {
         userId: payload.userId,
