@@ -2,9 +2,13 @@ import React, { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView } from 'react-native';
 import styled from 'styled-components/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { Video, ResizeMode } from 'expo-av';
 
 export default function LogSeizureSymptoms({ route, navigation }) {
   const { userId } = route.params;
+  const videoSources = {
+    Twitch: require('../assets/videos/armTwitch.mp4'),
+  };
 
   const tiles = useMemo(
     () => [
@@ -123,15 +127,33 @@ export default function LogSeizureSymptoms({ route, navigation }) {
         </ContinueBtn>
       </ScrollView>
 
-      {/* VIDEO PLACEHOLDER MODAL */}
+      {/* VIDEO MODAL */}
       <Modal transparent visible={videoModal != null} animationType="fade">
         <ModalBackdrop onPress={() => setVideoModal(null)}>
           <ModalCard>
-            <ModalTitle>Video demo</ModalTitle>
-            <ModalBody>
-              Placeholder for: <Bold>{videoModal}</Bold>
-              {'\n\n'}Later swap this for a real video.
-            </ModalBody>
+            <ModalTitle>{videoModal} demo</ModalTitle>
+
+            {videoModal && videoSources[videoModal] ? (
+              <Video
+                source={videoSources[videoModal]}
+                style={{
+                  width: '100%',
+                  height: 220,
+                  borderRadius: 16,
+                  backgroundColor: '#000',
+                  marginTop: 12,
+                  marginBottom: 14,
+                }}
+                resizeMode={ResizeMode.CONTAIN}
+                shouldPlay
+                isLooping
+                useNativeControls
+              />
+            ) : (
+              <ModalBody>
+                No video added yet for <Bold>{videoModal}</Bold>.
+              </ModalBody>
+            )}
 
             <ModalBtn onPress={() => setVideoModal(null)}>
               <ModalBtnText>Close</ModalBtnText>
