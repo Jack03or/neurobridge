@@ -384,7 +384,7 @@ export default function Dashboard({ route, navigation }) {
     if (status === 'late') {
       return { bg: '#f7c768', text: '#6b4d00', border: '#e2af46' };
     }
-    if (status === 'missed') {
+    if (status === 'missed' || status === 'none') {
       return { bg: '#e997aa', text: '#ffffff', border: '#d97b93' };
     }
     return { bg: '#f3ebe5', text: '#9b8e86', border: '#ead9df' };

@@ -211,15 +211,12 @@ public class DashboardController {
         // ---- MEDICATION (today) ----
         List<MedicationLog> todayLogs = medicationLogRepository.findByChildAndDate(child, today);
 
-        boolean anyLogged = !todayLogs.isEmpty();
         boolean anyTaken = todayLogs.stream().anyMatch(MedicationLog::isTaken);
 
         response.setMedicationTakenToday(anyTaken);
 
         if (anyTaken) {
             response.setMedicationStatusText("Taken today");
-        } else if (anyLogged) {
-            response.setMedicationStatusText("Missed today");
         } else {
             response.setMedicationStatusText("Not logged");
         }
