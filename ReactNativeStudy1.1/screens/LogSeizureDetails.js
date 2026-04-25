@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ScrollView, Switch, Platform } from 'react-native';
+import { Alert, ScrollView, Switch, Platform } from 'react-native';
 import styled from 'styled-components/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -38,6 +38,34 @@ export default function LogSeizureDetails({ route, navigation }) {
 
   const formatTime = (d) =>
     d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+
+  const continueToSummary = () => {
+    const minsBlank = mins.trim() === '';
+    const secsBlank = secs.trim() === '';
+
+    if (minsBlank || secsBlank) {
+      Alert.alert('Missing duration', 'Please enter both minutes and seconds for the seizure duration.');
+      return;
+    }
+
+    navigation.navigate('SeizureSummary', {
+      userId,
+      symptoms,
+      symptomsNone,
+      awareness,
+      potentialTriggers,
+      hoursSinceLastMeal,
+      timestampIso,
+      durationSeconds,
+      patientState,
+      medsTaken,
+      interventionNeeded,
+      tongueBite,
+      activityState,
+      incontinence,
+      notes,
+    });
+  };
 
   return (
     <Container>
@@ -195,27 +223,7 @@ export default function LogSeizureDetails({ route, navigation }) {
           />
         </Card>
 
-        <ContinueBtn
-          onPress={() =>
-            navigation.navigate('SeizureSummary', {
-              userId,
-              symptoms,
-              symptomsNone,
-              awareness,
-              potentialTriggers,
-              hoursSinceLastMeal,
-              timestampIso, //  send this to summary / backend
-              durationSeconds,
-              patientState,
-              medsTaken,
-              interventionNeeded,
-              tongueBite,
-              activityState,
-              incontinence,
-              notes,
-            })
-          }
-        >
+        <ContinueBtn onPress={continueToSummary}>
           <ContinueText>Continue</ContinueText>
         </ContinueBtn>
       </ScrollView>

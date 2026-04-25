@@ -80,7 +80,7 @@ export default function SeizureSummary({ route, navigation }) {
           </Line>
           <Line>
             <Label>Awareness</Label>
-            <Value>{payload.awareness}</Value>
+            <Value>{formatAwareness(payload.awareness)}</Value>
           </Line>
         </Card>
 
@@ -88,7 +88,7 @@ export default function SeizureSummary({ route, navigation }) {
           <CardTitle>Details</CardTitle>
           <Line>
             <Label>Timestamp</Label>
-            <Value>{payload.timestampIso}</Value>
+            <Value>{formatTimestamp(payload.timestampIso)}</Value>
           </Line>
           <Line>
             <Label>Duration</Label>
@@ -132,6 +132,31 @@ export default function SeizureSummary({ route, navigation }) {
       </ScrollView>
     </Container>
   );
+}
+
+function formatAwareness(value) {
+  if (!value) return '--';
+  if (value === 'LOSS_OF_CONSCIOUSNESS') return 'Loss of consciousness';
+  if (value === 'IMPAIRED') return 'Impaired awareness';
+  if (value === 'AWARE') return 'Aware';
+  return String(value)
+    .toLowerCase()
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function formatTimestamp(value) {
+  if (!value) return '--';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 /* styled */
