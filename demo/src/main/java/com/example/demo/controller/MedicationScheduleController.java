@@ -51,11 +51,17 @@ public class MedicationScheduleController {
         if (req.medicationName == null || req.medicationName.isBlank()) {
             return ResponseEntity.badRequest().body("medicationName is required");
         }
+        if (req.dose == null || req.dose.isBlank()) {
+            return ResponseEntity.badRequest().body("dose is required");
+        }
+        if (req.defaultTime == null) {
+            return ResponseEntity.badRequest().body("defaultTime is required");
+        }
 
         MedicationSchedule schedule = new MedicationSchedule();
         schedule.setChild(child);
         schedule.setMedicationName(req.medicationName.trim());
-        schedule.setDose(req.dose == null ? null : req.dose.trim());
+        schedule.setDose(req.dose.trim());
         schedule.setDefaultTime(req.defaultTime);
         schedule.setActive(true);
 

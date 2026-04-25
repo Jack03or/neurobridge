@@ -1,10 +1,18 @@
 // screens/AddChild.js
 import React, { useState } from 'react';
-import { Alert, StatusBar, Platform, Modal, KeyboardAvoidingView, Keyboard, FlatList } from 'react-native';
+import { Alert, StatusBar, Platform, Modal, KeyboardAvoidingView, Keyboard, FlatList, ScrollView } from 'react-native';
 import styled from 'styled-components/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { BASE_URL } from '../config';
+
+function createDefaultMedicationTime() {
+  return new Date(2020, 0, 1, 8, 0, 0, 0);
+}
+
+function toLocalPickerDate(source) {
+  return new Date(2020, 0, 1, source.getHours(), source.getMinutes(), 0, 0);
+}
 
 export default function AddChild({ route, navigation }) {
   const { userId } = route.params;
@@ -14,7 +22,7 @@ export default function AddChild({ route, navigation }) {
   const [disability, setDisability] = useState('');
   const [medication, setMedication] = useState('');
   const [medicationDose, setMedicationDose] = useState('');
-  const [medicationTime, setMedicationTime] = useState(new Date());
+  const [medicationTime, setMedicationTime] = useState(createDefaultMedicationTime());
   const [dob, setDob] = useState(null);
   const [showPicker, setShowPicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -123,8 +131,16 @@ export default function AddChild({ route, navigation }) {
   }, [medQuery, showMedPicker]);
 
   const handleAddChild = async () => {
-    if (!name || !dob || !gender) {
-      Alert.alert('Error', 'Please fill in all required fields.');
+    const trimmedName = name.trim();
+    const trimmedGender = gender.trim();
+    const trimmedMedication = medication.trim();
+    const trimmedMedicationDose = medicationDose.trim();
+
+    if (!trimmedName || !dob || !trimmedGender || !trimmedMedication || !trimmedMedicationDose) {
+      Alert.alert(
+        'Error',
+        'Please fill in all required fields. Learning / intellectual disabilities can be left blank.'
+      );
       return;
     }
 
@@ -142,11 +158,11 @@ export default function AddChild({ route, navigation }) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            name,
+            name: trimmedName,
             dob: formattedDob,
-            gender,
+            gender: trimmedGender,
             disability,
-            medication,
+            medication: trimmedMedication,
           }),
         },
       );
@@ -155,16 +171,20 @@ export default function AddChild({ route, navigation }) {
       console.log('Add child response:', result);
 
       if (response.ok) {
-        if (medication.trim()) {
-          await fetch(`${BASE_URL}/api/medication-schedules/by-user/${userId}`, {
+        const medResponse = await fetch(`${BASE_URL}/api/medication-schedules/by-user/${userId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              medicationName: medication.trim(),
-              dose: medicationDose.trim(),
+              medicationName: trimmedMedication,
+              dose: trimmedMedicationDose,
               defaultTime: toLocalTimePayload(medicationTime),
             }),
           });
+
+        if (!medResponse.ok) {
+          const medError = await medResponse.text();
+          Alert.alert('Medication Schedule Error', medError || 'Child saved but medication schedule could not be created.');
+          return;
         }
 
         Alert.alert('Success', 'Child added successfully!');
@@ -184,95 +204,105 @@ export default function AddChild({ route, navigation }) {
       <StatusBar barStyle="dark-content" />
       <TopCircle />
       <BottomCircle />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ width: '100%', flex: 1 }}
+      >
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <Card>
+            <Title>Add Child</Title>
 
-      <Card>
-        <Title>Add Child</Title>
+            <Input
+              placeholder="Child's Name"
+              value={name}
+              onChangeText={setName}
+              placeholderTextColor="#fff9"
+            />
 
-        <Input
-          placeholder="Child's Name"
-          value={name}
-          onChangeText={setName}
-          placeholderTextColor="#fff9"
-        />
+            {/* Date of Birth box */}
+            <TouchableDOB onPress={() => setShowPicker(true)}>
+              <DOBText>
+                {dob ? dob.toDateString() : 'Select Date of Birth'}
+              </DOBText>
+            </TouchableDOB>
 
-        {/* Date of Birth box */}
-        <TouchableDOB onPress={() => setShowPicker(true)}>
-          <DOBText>
-            {dob ? dob.toDateString() : 'Select Date of Birth'}
-          </DOBText>
-        </TouchableDOB>
+            {showPicker && (
+              <DateTimePicker
+                value={dob || new Date()}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={(event, selectedDate) => {
+                  setShowPicker(false);
+                  if (selectedDate) {
+                    setDob(selectedDate);
+                  }
+                }}
+                maximumDate={new Date()} // no future dates
+              />
+            )}
 
-        {showPicker && (
-          <DateTimePicker
-            value={dob || new Date()}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={(event, selectedDate) => {
-              setShowPicker(false);
-              if (selectedDate) {
-                setDob(selectedDate);
-              }
-            }}
-            maximumDate={new Date()} // no future dates
-          />
-        )}
+            <Input
+              placeholder="Gender (Male / Female / Other)"
+              value={gender}
+              onChangeText={setGender}
+              placeholderTextColor="#fff9"
+            />
+            <Input
+              placeholder="Learning / Intellectual Disabilities"
+              value={disability}
+              onChangeText={setDisability}
+              placeholderTextColor="#fff9"
+            />
+            <TouchableDOB onPress={openMedPicker}>
+              <DOBText style={{ opacity: medication ? 1 : 0.75 }}>
+                {medication || 'Tap to search medication (RxNorm)'}
+              </DOBText>
+            </TouchableDOB>
 
-        <Input
-          placeholder="Gender (Male / Female / Other)"
-          value={gender}
-          onChangeText={setGender}
-          placeholderTextColor="#fff9"
-        />
-        <Input
-          placeholder="Learning / Intellectual Disabilities"
-          value={disability}
-          onChangeText={setDisability}
-          placeholderTextColor="#fff9"
-        />
-        <TouchableDOB onPress={openMedPicker}>
-          <DOBText style={{ opacity: medication ? 1 : 0.75 }}>
-            {medication || 'Tap to search medication (RxNorm)'}
-          </DOBText>
-        </TouchableDOB>
+            <Input
+              placeholder="Dose (e.g. 50mg)"
+              value={medicationDose}
+              onChangeText={setMedicationDose}
+              placeholderTextColor="#fff9"
+            />
 
-        <Input
-          placeholder="Dose (e.g. 50mg)"
-          value={medicationDose}
-          onChangeText={setMedicationDose}
-          placeholderTextColor="#fff9"
-        />
+            <TouchableDOB onPress={() => setShowTimePicker(true)}>
+              <DOBText>
+                {`Default medication time: ${formatTime(medicationTime)}`}
+              </DOBText>
+            </TouchableDOB>
 
-        <TouchableDOB onPress={() => setShowTimePicker(true)}>
-          <DOBText>
-            {`Default medication time: ${formatTime(medicationTime)}`}
-          </DOBText>
-        </TouchableDOB>
+            {showTimePicker && (
+              <DateTimePicker
+                value={medicationTime}
+                mode="time"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={(event, selectedDate) => {
+                  if (Platform.OS !== 'ios') setShowTimePicker(false);
+                  if (selectedDate) {
+                    setMedicationTime(toLocalPickerDate(selectedDate));
+                  }
+                }}
+              />
+            )}
 
-        {showTimePicker && (
-          <DateTimePicker
-            value={medicationTime}
-            mode="time"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={(event, selectedDate) => {
-              if (Platform.OS !== 'ios') setShowTimePicker(false);
-              if (selectedDate) {
-                setMedicationTime(selectedDate);
-              }
-            }}
-          />
-        )}
+            {Platform.OS === 'ios' && showTimePicker && (
+              <DoneBtn onPress={() => setShowTimePicker(false)}>
+                <DoneText>Done</DoneText>
+              </DoneBtn>
+            )}
 
-        {Platform.OS === 'ios' && showTimePicker && (
-          <DoneBtn onPress={() => setShowTimePicker(false)}>
-            <DoneText>Done</DoneText>
-          </DoneBtn>
-        )}
-
-        <SubmitButton activeOpacity={0.8} onPress={handleAddChild}>
-          <ButtonText>Save Child</ButtonText>
-          <Icon name="check" size={22} color="#FFF" />
-        </SubmitButton>
-      </Card>
+            <SubmitButton activeOpacity={0.8} onPress={handleAddChild}>
+              <ButtonText>Save Child</ButtonText>
+              <Icon name="check" size={22} color="#FFF" />
+            </SubmitButton>
+          </Card>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       <Modal visible={showMedPicker} animationType="slide" transparent>
         <ModalOverlay onPress={closeMedPicker} />

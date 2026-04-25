@@ -24,14 +24,32 @@ public class ChildController {
 
     // Add a new child linked to a parent user by their id
     @PostMapping("/add")
-    public String addChild(@RequestBody Child child, @RequestParam Long userId) {
+    public ResponseEntity<String> addChild(@RequestBody Child child, @RequestParam Long userId) {
         User parent = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
+        if (child.getName() == null || child.getName().isBlank()
+                || child.getDob() == null
+                || child.getGender() == null || child.getGender().isBlank()
+                || child.getMedication() == null || child.getMedication().isBlank()) {
+            return ResponseEntity.badRequest().body("Name, date of birth, gender, and medication are required.");
+        }
+
+        if (!childRepository.findByUser(parent).isEmpty()) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body("A child profile already exists for this user.");
+        }
+
+        child.setName(child.getName().trim());
+        child.setGender(child.getGender().trim());
+        child.setMedication(child.getMedication().trim());
+        if (child.getDisability() != null) {
+            child.setDisability(child.getDisability().trim());
+        }
         child.setUser(parent);
         childRepository.save(child);
 
-        return "Child added successfully for user ID: " + userId;
+        return ResponseEntity.ok("Child added successfully for user ID: " + userId);
     }
 
     // Get ALL children for a specific parent (your existing endpoint)
