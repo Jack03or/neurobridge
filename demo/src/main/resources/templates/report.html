@@ -3,60 +3,116 @@
 <head>
     <meta charset="UTF-8" />
     <style>
+        @page {
+            size: A4;
+            margin: 20mm 14mm 18mm 14mm;
+        }
         body {
             font-family: Arial, sans-serif;
+            font-size: 12px;
+            line-height: 1.45;
             color: #1f2a37;
-            margin: 24px;
+            margin: 0;
         }
-        h1, h2, h3 {
-            margin: 0 0 8px 0;
+        h1, h2, h3, p {
+            margin: 0;
         }
         .header {
+            padding-bottom: 10px;
             border-bottom: 2px solid #e5e7eb;
-            padding-bottom: 8px;
-            margin-bottom: 16px;
+            margin-bottom: 18px;
+        }
+        .header h1 {
+            font-size: 22px;
+            margin-bottom: 4px;
         }
         .subtle {
             color: #6b7280;
-        }
-        .grid {
-            display: table;
-            width: 100%;
-        }
-        .grid-row {
-            display: table-row;
-        }
-        .grid-cell {
-            display: table-cell;
-            padding: 4px 10px 4px 0;
-            vertical-align: top;
+            font-size: 11px;
         }
         .section {
-            margin: 14px 0 18px 0;
+            margin: 0 0 16px 0;
+            padding: 14px 16px;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            page-break-inside: avoid;
         }
-        .pill {
-            display: inline-block;
-            background: #eef2ff;
-            color: #3730a3;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 12px;
-            margin-right: 6px;
+        .section-title {
+            font-size: 15px;
+            margin-bottom: 10px;
         }
-        table {
+        .summary-grid {
             width: 100%;
             border-collapse: collapse;
-            font-size: 12px;
         }
-        th, td {
+        .summary-grid td {
+            width: 33.33%;
+            padding: 6px 8px 6px 0;
+            vertical-align: top;
+        }
+        .kv-grid {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .kv-grid td {
+            padding: 5px 0;
+            vertical-align: top;
+        }
+        .label {
+            color: #6b7280;
+            width: 140px;
+            white-space: nowrap;
+            padding-right: 10px;
+        }
+        .value {
+            font-weight: 600;
+        }
+        ul {
+            margin: 0;
+            padding-left: 18px;
+        }
+        li {
+            margin-bottom: 6px;
+        }
+        .timeline-item {
+            padding: 10px 0;
             border-bottom: 1px solid #e5e7eb;
-            padding: 6px 4px;
-            text-align: left;
+            page-break-inside: avoid;
+        }
+        .timeline-item:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+        .timeline-time {
+            font-weight: 700;
+            margin-bottom: 2px;
+        }
+        .timeline-meta {
+            color: #374151;
+            margin-bottom: 4px;
+        }
+        .timeline-notes {
+            color: #6b7280;
+        }
+        .appointment-pill {
+            display: inline-block;
+            min-width: 66px;
+            padding: 2px 8px;
+            margin-right: 6px;
+            border-radius: 999px;
+            background: #f4e2e9;
+            color: #9c2e5d;
+            font-size: 11px;
+            font-weight: 700;
+            text-align: center;
+        }
+        .muted {
+            color: #6b7280;
         }
         .disclaimer {
             font-size: 11px;
             color: #6b7280;
-            margin-top: 10px;
+            margin-top: 12px;
         }
     </style>
 </head>
@@ -67,90 +123,99 @@
     </div>
 
     <div class="section">
-        <h2>Child Summary</h2>
-        <div class="grid">
-            <div class="grid-row">
-                <div class="grid-cell"><strong>Name:</strong> <span th:text="${data.childName}"></span></div>
-                <div class="grid-cell"><strong>DOB:</strong> <span th:text="${data.childDob}"></span></div>
-                <div class="grid-cell"><strong>Age:</strong> <span th:text="${data.childAge}"></span></div>
-            </div>
-            <div class="grid-row">
-                <div class="grid-cell"><strong>Gender:</strong> <span th:text="${data.childGender}"></span></div>
-                <div class="grid-cell"><strong>Disability:</strong> <span th:text="${data.childDisability}"></span></div>
-                <div class="grid-cell"><strong>Period:</strong> <span th:text="${data.timeframe}"></span></div>
-            </div>
-        </div>
+        <h2 class="section-title">Child Summary</h2>
+        <table class="summary-grid">
+            <tr>
+                <td><span class="label">Name</span><br /><span class="value" th:text="${data.childName}"></span></td>
+                <td><span class="label">DOB</span><br /><span class="value" th:text="${data.childDob}"></span></td>
+                <td><span class="label">Age</span><br /><span class="value" th:text="${data.childAge}"></span></td>
+            </tr>
+            <tr>
+                <td><span class="label">Gender</span><br /><span class="value" th:text="${data.childGender}"></span></td>
+                <td><span class="label">Disability</span><br /><span class="value" th:text="${data.childDisability}"></span></td>
+                <td><span class="label">Period</span><br /><span class="value" th:text="${data.timeframe}"></span></td>
+            </tr>
+        </table>
     </div>
 
     <div class="section">
-        <h2>Highlights</h2>
+        <h2 class="section-title">Highlights</h2>
         <ul>
             <li th:each="b : ${data.executiveSummary}" th:text="${b}">Summary item</li>
         </ul>
     </div>
 
     <div class="section">
-        <h2>Seizure Timeline (most recent 10)</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>Time</th>
-                    <th>Type</th>
-                    <th>Awareness</th>
-                    <th>Duration</th>
-                    <th>Notes</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr th:each="row : ${data.seizureTimeline}">
-                    <td th:text="${row.time}">--</td>
-                    <td th:text="${row.type}">--</td>
-                    <td th:text="${row.awareness}">--</td>
-                    <td th:text="${row.duration}">--</td>
-                    <td th:text="${row.notes}">--</td>
-                </tr>
-            </tbody>
+        <h2 class="section-title">Seizure Timeline (most recent 10)</h2>
+        <div th:if="${#lists.isEmpty(data.seizureTimeline)}" class="muted">No seizures were logged in this report period.</div>
+        <div th:if="${!#lists.isEmpty(data.seizureTimeline)}">
+            <div class="timeline-item" th:each="row : ${data.seizureTimeline}">
+                <div class="timeline-time" th:text="${row.time}">--</div>
+                <div class="timeline-meta">
+                    <span th:text="${row.type}">--</span>
+                    <span> · </span>
+                    <span th:text="${row.awareness}">--</span>
+                    <span> · </span>
+                    <span th:text="${row.duration}">--</span>
+                </div>
+                <div class="timeline-notes" th:if="${row.notes != null && !#strings.isEmpty(row.notes)}" th:text="${row.notes}">Notes</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2 class="section-title">Medication Summary</h2>
+        <table class="kv-grid">
+            <tr>
+                <td class="label">Adherence</td>
+                <td class="value" th:text="${data.medSummary.adherencePercent}">--</td>
+            </tr>
+            <tr>
+                <td class="label">Missed days</td>
+                <td th:text="${data.medSummary.missedDays}">--</td>
+            </tr>
+            <tr>
+                <td class="label">Medications</td>
+                <td th:text="${data.medSummary.medsUsed}">--</td>
+            </tr>
         </table>
     </div>
 
     <div class="section">
-        <h2>Medication Summary</h2>
-        <div class="grid">
-            <div class="grid-row">
-                <div class="grid-cell"><strong>Adherence:</strong> <span th:text="${data.medSummary.adherencePercent}"></span></div>
-                <div class="grid-cell"><strong>Missed days:</strong> <span th:text="${data.medSummary.missedDays}"></span></div>
-            </div>
-            <div class="grid-row">
-                <div class="grid-cell"><strong>Medications:</strong> <span th:text="${data.medSummary.medsUsed}"></span></div>
-            </div>
-        </div>
+        <h2 class="section-title">Sleep &amp; Vitals</h2>
+        <table class="kv-grid">
+            <tr>
+                <td class="label">Avg sleep</td>
+                <td class="value" th:text="${data.fitbitSummary.avgSleep}">--</td>
+            </tr>
+            <tr>
+                <td class="label">Avg HR</td>
+                <td class="value" th:text="${data.fitbitSummary.avgHeartRate}">--</td>
+            </tr>
+            <tr>
+                <td class="label">Avg HRV</td>
+                <td class="value" th:text="${data.fitbitSummary.avgHrv}">--</td>
+            </tr>
+            <tr>
+                <td class="label">Low sleep days</td>
+                <td class="value" th:text="${data.fitbitSummary.lowSleepDays}">--</td>
+            </tr>
+        </table>
     </div>
 
     <div class="section">
-        <h2>Sleep &amp; Vitals</h2>
-        <div class="grid">
-            <div class="grid-row">
-                <div class="grid-cell"><strong>Avg sleep:</strong> <span th:text="${data.fitbitSummary.avgSleep}"></span></div>
-                <div class="grid-cell"><strong>Avg HR:</strong> <span th:text="${data.fitbitSummary.avgHeartRate}"></span></div>
-                <div class="grid-cell"><strong>Avg HRV:</strong> <span th:text="${data.fitbitSummary.avgHrv}"></span></div>
-                <div class="grid-cell"><strong>Low sleep days:</strong> <span th:text="${data.fitbitSummary.lowSleepDays}"></span></div>
-            </div>
-        </div>
-    </div>
-
-    <div class="section">
-        <h2>Smart Insights</h2>
+        <h2 class="section-title">Smart Insights</h2>
         <ul>
             <li th:each="insight : ${data.insights}" th:text="${insight}">Insight</li>
         </ul>
     </div>
 
     <div class="section">
-        <h2>Appointments</h2>
-        <div th:if="${#lists.isEmpty(data.appointments)}">No appointments in this period.</div>
+        <h2 class="section-title">Appointments</h2>
+        <div th:if="${#lists.isEmpty(data.appointments)}" class="muted">No appointments in this period.</div>
         <ul th:if="${!#lists.isEmpty(data.appointments)}">
             <li th:each="appt : ${data.appointments}">
-                <span class="pill" th:text="${appt.label}">Label</span>
+                <span class="appointment-pill" th:text="${appt.label}">Label</span>
                 <span th:text="${appt.value}">Appointment</span>
             </li>
         </ul>

@@ -40,7 +40,12 @@ export default function ReportPreview({ route }) {
     trendSeries: { labels: [], values: [] },
     timingSplit: { labels: [], values: [] },
   };
-  const trendGrouping = reportCharts?.trendSeries?.grouping === 'weekly' ? 'weekly' : 'daily';
+  const rawTrendGrouping = reportCharts?.trendSeries?.grouping;
+  const trendGrouping = rawTrendGrouping === 'monthly'
+    ? 'monthly'
+    : rawTrendGrouping === 'weekly'
+      ? 'weekly'
+      : 'daily';
   const trendLabels = Array.isArray(reportCharts?.trendSeries?.labels) ? reportCharts.trendSeries.labels : [];
   const trendValues = Array.isArray(reportCharts?.trendSeries?.values)
     ? reportCharts.trendSeries.values.map((v) => Number(v || 0))
@@ -48,15 +53,24 @@ export default function ReportPreview({ route }) {
   const trendTotal = trendValues.reduce((sum, value) => sum + value, 0);
   const trendMax = trendValues.length ? Math.max(...trendValues) : 0;
   const topPeriods = trendLabels.filter((_, idx) => trendValues[idx] === trendMax && trendMax > 0);
+  const trendPeriodLabel = trendGrouping === 'monthly' ? 'months' : trendGrouping === 'weekly' ? 'weeks' : 'dates';
+  const trendSinglePeriodLabel = trendGrouping === 'monthly' ? 'month' : trendGrouping === 'weekly' ? 'week' : 'date';
   const trendSummary = trendTotal === 0
     ? 'No seizures logged in this report period.'
     : topPeriods.length > 1
-      ? `${trendTotal} seizures in this report period. Highest ${trendGrouping === 'weekly' ? 'weeks' : 'dates'}: ${topPeriods.join(', ')} (${trendMax}).`
-      : `${trendTotal} seizures in this report period. Highest ${trendGrouping === 'weekly' ? 'week' : 'date'}: ${topPeriods[0]} (${trendMax}).`;
+      ? `${trendTotal} seizures in this report period. Highest ${trendPeriodLabel}: ${topPeriods.join(', ')} (${trendMax}).`
+      : `${trendTotal} seizures in this report period. Highest ${trendSinglePeriodLabel}: ${topPeriods[0]} (${trendMax}).`;
   const timingInsight = reportData.insights?.find((item) => {
     const text = String(item || '').toLowerCase();
     return text.includes('morning') || text.includes('afternoon') || text.includes('evening') || text.includes('night');
   }) || 'Not enough data yet.';
+  const trendCeiling = trendMax > 20
+    ? Math.ceil(trendMax / 10) * 10
+    : trendMax > 10
+      ? 20
+      : trendMax > 5
+        ? 10
+        : 5;
 
   return (
     <Container>
@@ -104,11 +118,13 @@ export default function ReportPreview({ route }) {
           <ChartBlock>
             <ChartTitle>Seizure trend in this timeframe</ChartTitle>
             <ChartCaption>
-              {trendGrouping === 'weekly'
+              {trendGrouping === 'monthly'
+                ? 'How many seizures were logged across each month in the selected period'
+                : trendGrouping === 'weekly'
                 ? 'How many seizures were logged across each week in the selected period'
                 : 'How many seizures were logged across the selected dates'}
             </ChartCaption>
-            <InsightTrendLine data={reportCharts.trendSeries} />
+            <InsightTrendLine data={reportCharts.trendSeries} yAxisCeiling={trendCeiling} />
             <ChartLegend>{trendSummary}</ChartLegend>
           </ChartBlock>
           <ChartBlock>

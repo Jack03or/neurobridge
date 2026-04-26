@@ -9,7 +9,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
-import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -57,9 +56,6 @@ public class ReportService {
 
     @Value("${reports.storage.path:reports}")
     private String reportsStoragePath;
-
-    @Value("${ml.base-url:http://127.0.0.1:8000}")
-    private String mlBaseUrl;
 
     public Report generateReportForUser(Long userId, LocalDate startDate, LocalDate endDate, String titleInput) {
         User user = userRepository.findById(userId).orElse(null);
@@ -155,7 +151,7 @@ public class ReportService {
         data.seizureTimeline = buildSeizureTimeline(seizures);
         data.medSummary = buildMedicationSummary(meds);
         data.fitbitSummary = buildFitbitSummary(metrics);
-        data.insights = buildInsights(child, seizures, meds, metrics, startDate, endDate);
+        data.insights = buildInsights(seizures, meds, metrics, startDate, endDate);
         data.appointments = buildAppointments(appointmentsInRange, upcoming);
         data.charts = buildReportCharts(seizures, startDate, endDate);
 
@@ -355,13 +351,8 @@ public class ReportService {
         return summary;
     }
 
-    private List<String> buildInsights(Child child, List<SeizureLog> seizures, List<MedicationLog> meds, List<FitBitMetrics> metrics,
+    private List<String> buildInsights(List<SeizureLog> seizures, List<MedicationLog> meds, List<FitBitMetrics> metrics,
                                        LocalDate startDate, LocalDate endDate) {
-        List<String> mlInsights = fetchMlInsights(child.getId());
-        if (!mlInsights.isEmpty()) {
-            return mlInsights;
-        }
-
         List<String> insights = new ArrayList<>();
 
         Set<LocalDate> seizureDays = seizures.stream()
@@ -392,7 +383,7 @@ public class ReportService {
                 .count();
 
         if (!seizureDays.isEmpty() && lowSleepSeizureDays > 0) {
-            insights.add("Low sleep (<6h) appeared on " + lowSleepSeizureDays + " seizure day(s).");
+            insights.add("Low sleep (less than 6 hours) appeared on " + lowSleepSeizureDays + " seizure day(s).");
         }
 
         if (!seizures.isEmpty()) {
@@ -418,8 +409,37 @@ public class ReportService {
                 .filter(s -> s.getTimestamp() != null)
                 .collect(Collectors.groupingBy(s -> s.getTimestamp().toLocalDate(), Collectors.counting()));
 
-        boolean useWeeklyTrend = dayCount > 14;
-        if (useWeeklyTrend) {
+        String grouping;
+        if (dayCount > 42) {
+            grouping = "monthly";
+            YearMonth startMonth = YearMonth.from(startDate);
+            YearMonth endMonth = YearMonth.from(endDate);
+            YearMonth currentMonth = startMonth;
+
+            while (!currentMonth.isAfter(endMonth)) {
+                LocalDate monthStart = currentMonth.atDay(1);
+                LocalDate monthEnd = currentMonth.atEndOfMonth();
+
+                if (monthStart.isBefore(startDate)) {
+                    monthStart = startDate;
+                }
+                if (monthEnd.isAfter(endDate)) {
+                    monthEnd = endDate;
+                }
+
+                int monthTotal = 0;
+                LocalDate day = monthStart;
+                while (!day.isAfter(monthEnd)) {
+                    monthTotal += trendByDate.getOrDefault(day, 0L).intValue();
+                    day = day.plusDays(1);
+                }
+
+                trendLabels.add(currentMonth.format(DateTimeFormatter.ofPattern("MMM yyyy")));
+                trendValues.add(monthTotal);
+                currentMonth = currentMonth.plusMonths(1);
+            }
+        } else if (dayCount > 14) {
+            grouping = "weekly";
             LocalDate current = startDate;
             int weekNumber = 1;
             while (!current.isAfter(endDate)) {
@@ -442,6 +462,7 @@ public class ReportService {
                 weekNumber++;
             }
         } else {
+            grouping = "daily";
             LocalDate current = startDate;
             while (!current.isAfter(endDate)) {
                 trendLabels.add(current.format(DateTimeFormatter.ofPattern("dd MMM")));
@@ -453,7 +474,7 @@ public class ReportService {
         Map<String, Object> trendSeries = new LinkedHashMap<>();
         trendSeries.put("labels", trendLabels);
         trendSeries.put("values", trendValues);
-        trendSeries.put("grouping", useWeeklyTrend ? "weekly" : "daily");
+        trendSeries.put("grouping", grouping);
         charts.put("trendSeries", trendSeries);
 
         Map<String, Integer> timingBuckets = new LinkedHashMap<>();
@@ -477,23 +498,6 @@ public class ReportService {
         charts.put("timingSplit", timingSplit);
 
         return charts;
-    }
-
-    private List<String> fetchMlInsights(Long childId) {
-        try {
-            RestTemplate restTemplate = new RestTemplate();
-            Map response = restTemplate.getForObject(mlBaseUrl + "/insights?childId=" + childId, Map.class);
-            if (response == null || !response.containsKey("insights")) {
-                return List.of();
-            }
-            Object raw = response.get("insights");
-            if (raw instanceof List<?> list) {
-                return list.stream().map(String::valueOf).collect(Collectors.toList());
-            }
-        } catch (Exception ignored) {
-            // fall back to rule-based insights
-        }
-        return List.of();
     }
 
     private String mostCommonTimeWindow(List<SeizureLog> seizures) {

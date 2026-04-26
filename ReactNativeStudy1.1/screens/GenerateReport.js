@@ -54,6 +54,12 @@ export default function GenerateReport({ route, navigation }) {
   };
 
   const onGenerate = async () => {
+    const validModes = ['WEEKLY', 'MONTHLY', 'CUSTOM'];
+    if (!validModes.includes(mode) || !startDate || !endDate || Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+      Alert.alert('Missing timeframe', 'Please choose a valid report timeframe before generating the report.');
+      return;
+    }
+
     if (mode === 'CUSTOM' && endDate < startDate) {
       Alert.alert('Invalid range', 'End date must be after start date.');
       return;

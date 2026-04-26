@@ -3,7 +3,7 @@ import { Text, useWindowDimensions, View } from 'react-native';
 import { BarChart } from 'react-native-chart-kit';
 import styled from 'styled-components/native';
 
-export default function InsightTrendLine({ data, onSelectDay }) {
+export default function InsightTrendLine({ data, onSelectDay, yAxisCeiling }) {
   const { width } = useWindowDimensions();
   const labels = Array.isArray(data?.labels) ? data.labels : [];
   const values = Array.isArray(data?.values) ? data.values : [];
@@ -14,6 +14,16 @@ export default function InsightTrendLine({ data, onSelectDay }) {
   }
 
   const chartWidth = Math.max(190, width - 132);
+  const maxValue = values.length ? Math.max(...values.map((v) => Number(v || 0))) : 0;
+  const resolvedCeiling = typeof yAxisCeiling === 'number'
+    ? yAxisCeiling
+    : maxValue > 20
+      ? Math.ceil(maxValue / 10) * 10
+      : maxValue > 10
+        ? 20
+        : maxValue > 5
+          ? 10
+          : 5;
 
   return (
     <View>
@@ -22,7 +32,7 @@ export default function InsightTrendLine({ data, onSelectDay }) {
         width={chartWidth}
         height={170}
         fromZero
-        fromNumber={5}
+        fromNumber={resolvedCeiling}
         withInnerLines
         showValuesOnTopOfBars
         yAxisLabel=""
