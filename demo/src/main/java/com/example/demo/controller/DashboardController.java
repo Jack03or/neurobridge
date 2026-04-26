@@ -549,6 +549,7 @@ public class DashboardController {
 
         LocalDate today = LocalDate.now();
         LocalDate start = today.minusDays(9);
+        LocalDate trackingStart = child.getCreatedAt() == null ? start : child.getCreatedAt().toLocalDate();
 
         List<MedicationSchedule> schedules = medicationScheduleRepository.findByChildAndActiveTrueOrderByCreatedAtAsc(child);
         LocalTime scheduledTime = schedules.isEmpty() ? null : schedules.get(0).getDefaultTime();
@@ -564,8 +565,13 @@ public class DashboardController {
 
         for (int i = 0; i < 10; i++) {
             LocalDate day = start.plusDays(i);
-            List<MedicationLog> dayLogs = logsByDate.getOrDefault(day, List.of());
-            String status = resolveMedicationDayStatus(dayLogs, scheduledTime);
+            String status;
+            if (day.isBefore(trackingStart)) {
+                status = "empty";
+            } else {
+                List<MedicationLog> dayLogs = logsByDate.getOrDefault(day, List.of());
+                status = resolveMedicationDayStatus(dayLogs, scheduledTime);
+            }
 
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("date", day.toString());
@@ -622,6 +628,12 @@ public class DashboardController {
 
     private String buildMedicationHeatmapSummary(List<Map<String, Object>> days, int takenStreak, int recentMissed, int recentLate) {
         if (days.isEmpty()) {
+            return "Not enough medication data yet.";
+        }
+
+        boolean hasTrackedDays = days.stream()
+                .anyMatch(day -> !"empty".equals(String.valueOf(day.get("status"))));
+        if (!hasTrackedDays) {
             return "Not enough medication data yet.";
         }
 
