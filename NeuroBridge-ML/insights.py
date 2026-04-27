@@ -102,6 +102,7 @@ def build_daily_events(events: pd.DataFrame) -> pd.DataFrame:
             sleep_hours=("sleep_hours", "mean"),
             any_missed_med=("any_missed_med", "max"),
             any_late_med=("any_late_med", "max"),
+            med_logged_today=("med_logged_today", "max"),
             latest_heart_rate=("latest_heart_rate", "mean"),
             hrv=("hrv", "mean"),
             day_of_week=("day_of_week", "first"),
@@ -116,6 +117,7 @@ def build_daily_events(events: pd.DataFrame) -> pd.DataFrame:
     daily["hrv"] = pd.to_numeric(daily["hrv"], errors="coerce")
     daily["any_missed_med"] = daily["any_missed_med"].fillna(0).astype(int)
     daily["any_late_med"] = daily["any_late_med"].fillna(0).astype(int)
+    daily["med_logged_today"] = daily["med_logged_today"].fillna(0).astype(int)
     daily["low_sleep"] = (daily["sleep_hours"] < LOW_SLEEP_THRESHOLD).fillna(False)
     daily["low_sleep_and_missed"] = (
         (daily["low_sleep"]) & (daily["any_missed_med"] == 1)
@@ -231,6 +233,14 @@ def build_medication_insights(
 ) -> dict:
     messages = []
     current_status = "good"
+
+    if latest_day is not None and latest_day["med_logged_today"] == 0:
+        add_message(
+            messages,
+            "Medication has not been logged today. Seizure risk has been higher when doses are missed.",
+            "high",
+        )
+        current_status = "alert"
 
     if latest_day is not None and latest_day["any_missed_med"] == 1 and missed_meds_rate_seiz > missed_meds_rate_non + 0.10:
         add_message(

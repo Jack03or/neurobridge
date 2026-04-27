@@ -429,11 +429,6 @@ def train_model(events: pd.DataFrame, out_model: Path, out_metrics: Path) -> Non
         "sleep_score",
         "hrv_score",
         "hr_score",
-        "adherence_ratio",
-        "missed_meds_count",
-        "late_meds_count",
-        "any_missed_med",
-        "any_late_med",
         "low_sleep_and_missed_meds",
         "time_since_last_med_hours",
         "hour_of_day",
@@ -455,7 +450,7 @@ def train_model(events: pd.DataFrame, out_model: Path, out_metrics: Path) -> Non
 
     scale_pos_weight = neg / max(pos, 1)
 
-    monotone_constraints = (1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0)
+    monotone_constraints = (1, 1, 1, 1, 1, 0, 0)
 
     model = Pipeline(
         steps=[

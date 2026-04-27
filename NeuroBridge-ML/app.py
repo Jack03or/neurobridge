@@ -116,10 +116,6 @@ def safe_probability(p: float) -> float:
     """
     p = float(np.clip(p, 0.0, 1.0))
 
-    # A monotonic curve that keeps ranking intact but reduces aggressive
-    # percentages on safer-looking days.
-    p = p ** 2.6
-
     # clamp to 5%..95% so we never claim certainty.
     p = float(np.clip(p, 0.05, 0.95))
     return p
@@ -168,9 +164,6 @@ def build_feature_frame(req: PredictRequest):
         "sleep_score": sleep_score,
         "hrv_score": hrv_score,
         "hr_score": hr_score,
-        "adherence_ratio": float(med_taken),
-        "missed_meds_count": float(med_missed),
-        "late_meds_count": float(med_late),
         "any_missed_med": float(med_missed),
         "any_late_med": float(med_late),
         "low_sleep_and_missed_meds": float(low_sleep_and_missed),
