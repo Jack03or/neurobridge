@@ -8,6 +8,7 @@ import {
   Pressable,
   ScrollView,
   TouchableOpacity,
+  useWindowDimensions,
 } from 'react-native';
 import styled from 'styled-components/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -17,6 +18,8 @@ import { BASE_URL } from '../config';
 
 export default function SeizureDiary({ route, navigation }) {
   const { userId } = route.params;
+  const { width } = useWindowDimensions();
+  const calendarWidth = Math.max(280, width - 72);
 
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(toYMD(new Date()));
@@ -274,6 +277,7 @@ export default function SeizureDiary({ route, navigation }) {
               disabledOpacity={0.6}
             >
               <WeekCalendar
+                calendarWidth={calendarWidth}
                 firstDay={1}
                 markingType="multi-dot"
                 markedDates={markedDates}

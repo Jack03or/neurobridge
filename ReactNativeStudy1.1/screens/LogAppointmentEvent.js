@@ -31,6 +31,11 @@ export default function LogAppointmentEvent({ route, navigation }) {
   const [showTimePicker, setShowTimePicker] = useState(false);
 
   const save = async () => {
+    if (!location.trim()) {
+      Alert.alert('Location required', 'Please enter the appointment location.');
+      return;
+    }
+
     try {
       const body = {
         id: existing?.id ?? null,

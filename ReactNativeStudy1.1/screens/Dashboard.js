@@ -133,6 +133,20 @@ export default function Dashboard({ route, navigation }) {
   };
 
   useEffect(() => {
+    setLoading(true);
+    setDashboard(null);
+    setCategories({});
+    setCharts(emptyCharts);
+    setSchedules([]);
+    setPendingSchedule(null);
+    setShowMedicationModal(false);
+    setShowTimePicker(false);
+    setSelectedTimingDetail(null);
+    setSelectedTrendIndex(null);
+    setSelectedSleepIndex(null);
+    setSelectedInsightTab('sleep');
+    setSelectedChartTab('trend');
+    setSelectedSecondaryChartTab('timing');
     fetchDashboard();
     fetchSchedules();
     fetchInsights();
