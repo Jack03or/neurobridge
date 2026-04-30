@@ -390,6 +390,17 @@ def build_feature_rows(
     events["low_sleep_and_missed_meds"] = (
         (events["sleep_hours"] < 6.0) & (events["any_missed_med"] == 1)
     ).astype(int)
+    events["medication_status_code"] = np.select(
+        [
+            events["any_late_med"] == 1,
+            events["med_taken_today"] == 1,
+        ],
+        [
+            1,
+            0,
+        ],
+        default=2,
+    )
 
     for col in [
         "med_taken_today",
@@ -430,7 +441,7 @@ def train_model(events: pd.DataFrame, out_model: Path, out_metrics: Path) -> Non
         "hrv_score",
         "hr_score",
         "low_sleep_and_missed_meds",
-        "time_since_last_med_hours",
+        "medication_status_code",
         "hour_of_day",
         "day_of_week",
     ]

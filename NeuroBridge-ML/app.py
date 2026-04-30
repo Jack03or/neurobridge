@@ -158,7 +158,7 @@ def build_feature_frame(req: PredictRequest):
     med_late = 1 if status == "late" else 0
     med_missed = 1 if status == "missed" or med_taken == 0 else 0
     low_sleep_and_missed = 1 if (req.sleep_hours < 6.0 and med_missed == 1) else 0
-    time_since_last_med_hours = 8.0 if med_late == 1 else (0.0 if med_taken == 1 else 24.0)
+    medication_status_code = 1.0 if med_late == 1 else (0.0 if med_taken == 1 else 2.0)
 
     values = {
         "sleep_score": sleep_score,
@@ -167,7 +167,7 @@ def build_feature_frame(req: PredictRequest):
         "any_missed_med": float(med_missed),
         "any_late_med": float(med_late),
         "low_sleep_and_missed_meds": float(low_sleep_and_missed),
-        "time_since_last_med_hours": time_since_last_med_hours,
+        "medication_status_code": medication_status_code,
         "hour_of_day": float(np.datetime64("now").astype(object).hour),
         "day_of_week": float(np.datetime64("today").astype(object).weekday()),
     }
